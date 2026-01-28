@@ -94,6 +94,23 @@ button{
   background:#fff7e6;
   margin-left:6px;
 }
+.matriz-info{
+  margin-top:12px;
+  padding:10px;
+  border:2px dashed #1e6bd6;
+  border-radius:10px;
+  background:#eef4ff;
+  font-size:18px;
+  font-weight:bold;
+  text-align:center;
+}
+.matriz-info small{
+  display:block;
+  margin-top:4px;
+  font-size:13px;
+  font-weight:normal;
+  color:#444;
+}
 .badge-info{
   display:inline-block;
   padding:2px 8px;
