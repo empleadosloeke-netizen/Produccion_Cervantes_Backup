@@ -1,6 +1,6 @@
 const GOOGLE_SHEET_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx2geVAhLh3h4wlDU9DqbKWqJ42OW1yI8cPP9c3kFfoiLRblqPZxm-8tgPSfJXKgps/exec";
 
-/* ========= UTIL TIEMPO (MISMO RELOJ PARA TODO) ========= */
+/* ========= TIEMPO UNIFICADO ========= */
 function isoNowSeconds() {
   const d = new Date();
   d.setMilliseconds(0);
@@ -8,125 +8,124 @@ function isoNowSeconds() {
 }
 
 /* ========= ELEMENTOS ========= */
-const legajoInput = document.getElementById("legajoInput");
-const daySummary  = document.getElementById("daySummary");
-const error       = document.getElementById("error");
+const legajoScreen  = document.getElementById("legajoScreen");
+const optionsScreen = document.getElementById("optionsScreen");
+const legajoInput   = document.getElementById("legajoInput");
+const daySummary    = document.getElementById("daySummary");
+const error         = document.getElementById("error");
+
+const row1 = document.getElementById("row1");
+const row2 = document.getElementById("row2");
+const row3 = document.getElementById("row3");
+
+const selectedArea = document.getElementById("selectedArea");
+const selectedBox  = document.getElementById("selectedBox");
+const selectedDesc = document.getElementById("selectedDesc");
+const inputArea    = document.getElementById("inputArea");
+const inputLabel   = document.getElementById("inputLabel");
+const textInput    = document.getElementById("textInput");
+
+const btnContinuar = document.getElementById("btnContinuar");
+const btnBackTop   = document.getElementById("btnBackTop");
+const btnBackLabel = document.getElementById("btnBackLabel");
+const btnResetSelection = document.getElementById("btnResetSelection");
+const btnEnviar = document.getElementById("btnEnviar");
 
 /* ========= OPCIONES ========= */
 const OPTIONS = [
-  {code:"E",desc:"Empecé Matriz"},
-  {code:"C",desc:"Cajón"},
-  {code:"PB",desc:"Paré Baño"},
-  {code:"BC",desc:"Busqué Cajón"},
-  {code:"MOV",desc:"Movimiento"},
-  {code:"LIMP",desc:"Limpieza"},
-  {code:"Perm",desc:"Permiso"},
-  {code:"AL",desc:"Ayuda Logística"},
-  {code:"PR",desc:"Paré Carga Rollo"},
-  {code:"CM",desc:"Cambiar Matriz"},
-  {code:"RM",desc:"Rotura Matriz"},
-  {code:"PC",desc:"Paré Comida"},
-  {code:"RD",desc:"Rollo Fleje Doblado"}
+  {code:"E",desc:"Empecé Matriz",row:1,input:true},
+  {code:"C",desc:"Cajón",row:1,input:true},
+  {code:"PB",desc:"Paré Baño",row:2},
+  {code:"BC",desc:"Busqué Cajón",row:2},
+  {code:"MOV",desc:"Movimiento",row:2},
+  {code:"LIMP",desc:"Limpieza",row:2},
+  {code:"Perm",desc:"Permiso",row:2},
+  {code:"AL",desc:"Ayuda Logística",row:3},
+  {code:"PR",desc:"Paré Carga Rollo",row:3},
+  {code:"CM",desc:"Cambiar Matriz",row:3},
+  {code:"RM",desc:"Rotura Matriz",row:3},
+  {code:"PC",desc:"Paré Comida",row:3},
+  {code:"RD",desc:"Rollo Fleje Doblado",row:3}
 ];
 
 const NON_DOWNTIME_CODES = new Set(["E","C","Perm","RM","RD"]);
 
-/* ========= COOKIES DEL DÍA ========= */
-const COOKIE_NAME = "prod_day_state_v3";
-const COOKIE_DAYS = 365;
+let selected = null;
 
-function setCookie(name, value, days) {
-  const d = new Date();
-  d.setTime(d.getTime() + (days*24*60*60*1000));
-  document.cookie = `${name}=${encodeURIComponent(value)};expires=${d.toUTCString()};path=/;SameSite=Lax`;
-}
-function getCookie(name){
-  const cookies = document.cookie ? document.cookie.split("; ") : [];
-  for(const c of cookies){
-    const [k,...r]=c.split("=");
-    if(k===name) return decodeURIComponent(r.join("="));
+/* ========= NAVEGACIÓN ========= */
+function goToOptions(){
+  if(!legajoInput.value.trim()){
+    alert("Ingresá el número de legajo");
+    return;
   }
-  return "";
+  legajoScreen.classList.add("hidden");
+  optionsScreen.classList.remove("hidden");
 }
-function todayKeyAR(){
-  return new Date().toLocaleDateString("es-AR",{timeZone:"America/Argentina/Buenos_Aires"});
-}
-function freshDayState(){
-  return {dayKey:todayKeyAR(),lastMatrix:null,lastCajon:null,last2:[],lastDowntime:null};
-}
-function readState(){
-  try{
-    const raw=getCookie(COOKIE_NAME);
-    if(!raw) return freshDayState();
-    const o=JSON.parse(raw);
-    if(o.dayKey!==todayKeyAR()) return freshDayState();
-    return o;
-  }catch{return freshDayState();}
-}
-function writeState(s){setCookie(COOKIE_NAME,JSON.stringify(s),COOKIE_DAYS);}
 
-function isDowntime(p){return !NON_DOWNTIME_CODES.has(p.opcion);}
-function sameDowntime(a,b){return a&&b&&a.opcion===b.opcion&&(a.texto||"")===(b.texto||"");}
-
-/* ========= VALIDACIÓN ========= */
-function validateBeforeSend(payload){
-  const s=readState();
-  const ld=s.lastDowntime;
-  if(!ld) return {ok:true};
-  if(!isDowntime(payload)) return {ok:true};
-  if(!sameDowntime(ld,payload)){
-    return {ok:false,msg:`Tiempo muerto pendiente (${ld.opcion}). Repetí el mismo o enviá E/C/Perm/RM/RD`};
-  }
-  return {ok:true,isSecondSameDowntime:true,downtimeTs:ld.ts};
+function backToLegajo(){
+  optionsScreen.classList.add("hidden");
+  legajoScreen.classList.remove("hidden");
 }
+
+btnContinuar.addEventListener("click",goToOptions);
+btnBackTop.addEventListener("click",backToLegajo);
+btnBackLabel.addEventListener("click",backToLegajo);
+legajoInput.addEventListener("keydown",e=>{if(e.key==="Enter")goToOptions();});
+
+/* ========= RENDER OPCIONES ========= */
+function render(){
+  row1.innerHTML=row2.innerHTML=row3.innerHTML="";
+  OPTIONS.forEach(o=>{
+    const d=document.createElement("div");
+    d.className="box";
+    d.innerHTML=`<div class="box-title">${o.code}</div><div class="box-desc">${o.desc}</div>`;
+    d.onclick=()=>selectOption(o);
+    (o.row===1?row1:o.row===2?row2:row3).appendChild(d);
+  });
+}
+render();
+
+/* ========= SELECCIÓN ========= */
+function selectOption(o){
+  selected=o;
+  selectedArea.classList.remove("hidden");
+  selectedBox.innerText=o.code;
+  selectedDesc.innerText=o.desc;
+  error.innerText="";
+  textInput.value="";
+  inputArea.classList.toggle("hidden",!o.input);
+}
+
+btnResetSelection.onclick=()=>selectedArea.classList.add("hidden");
+
+/* ========= COOKIES ========= */
+const COOKIE_NAME="prod_day_state_v3";
+function getState(){try{return JSON.parse(localStorage.getItem(COOKIE_NAME))||{}}catch{return{}}}
+function setState(s){localStorage.setItem(COOKIE_NAME,JSON.stringify(s))}
 
 /* ========= ENVÍO ========= */
-async function send(payload){
-  const v=validateBeforeSend(payload);
-  if(!v.ok){alert(v.msg);return;}
-
-  try{
-    await fetch(GOOGLE_SHEET_WEBAPP_URL,{
-      method:"POST",
-      headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body:JSON.stringify(payload),
-      mode:"no-cors"
-    });
-
-    const s=readState();
-    const item={...payload,ts:payload.tsEvent};
-
-    s.last2.unshift(item);
-    s.last2=s.last2.slice(0,2);
-
-    if(payload.opcion==="E"){
-      if(s.lastMatrix && s.lastMatrix.texto!==item.texto){s.lastCajon=null;}
-      s.lastMatrix=item;
-      s.lastDowntime=null;
-    }
-    if(payload.opcion==="C"){
-      s.lastCajon=item;
-      s.lastDowntime=null;
-    }
-    if(NON_DOWNTIME_CODES.has(payload.opcion) && payload.opcion!=="E" && payload.opcion!=="C"){
-      s.lastDowntime=null;
-    }
-    if(isDowntime(payload)){
-      if(!s.lastDowntime) s.lastDowntime=item;
-      else if(sameDowntime(s.lastDowntime,payload)) s.lastDowntime=null;
-    }
-
-    writeState(s);
-    alert("Registro enviado correctamente");
-  }catch(e){
-    error.innerText="No se pudo enviar";
-    console.log(e);
-  }
-}
-
-/* ========= EJEMPLO DE USO ========= */
-// EJEMPLO: enviar E con número 15
-function ejemploEnviar(){
+btnEnviar.onclick=async()=>{
+  if(!selected) return;
   const ts=isoNowSeconds();
-  send({legajo:"1",opcion:"E",descripcion:"Empecé Matriz",texto:"15",tsEvent:ts,tInicio:""});
-}
+
+  const payload={
+    legajo:legajoInput.value.trim(),
+    opcion:selected.code,
+    descripcion:selected.desc,
+    texto:textInput.value.trim(),
+    tsEvent:ts,
+    tInicio:""
+  };
+
+  await fetch(GOOGLE_SHEET_WEBAPP_URL,{
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify(payload),
+    mode:"no-cors"
+  });
+
+  alert("Registro enviado");
+  selectedArea.classList.add("hidden");
+  optionsScreen.classList.add("hidden");
+  legajoScreen.classList.remove("hidden");
+};
