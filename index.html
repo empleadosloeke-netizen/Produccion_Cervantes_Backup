@@ -1,63 +1,62 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Registro Producción</title>
 
 <style>
-  body{font-family:Arial,sans-serif;margin:0;padding:12px;}
-  .hidden{display:none;}
+body{font-family:Arial,sans-serif;margin:0;padding:12px;}
+.hidden{display:none;}
 
-  button{
-    width:100%;padding:16px;font-size:22px;
-    margin-top:14px;border-radius:6px;
-  }
-  .primary-btn{background:#1e6bd6;color:#fff;border:none;}
+button{
+  width:100%;padding:16px;font-size:22px;
+  margin-top:14px;border-radius:6px;
+}
+.primary-btn{background:#1e6bd6;color:#fff;border:none;}
 
-  #legajoScreen h1{font-size:34px;text-align:center;}
-  #legajoInput{width:100%;font-size:32px;padding:12px;text-align:center;}
+#legajoScreen h1{font-size:34px;text-align:center;}
+#legajoInput{width:100%;font-size:32px;padding:12px;text-align:center;}
 
-  .row{display:grid;gap:10px;margin-top:12px;}
-  .row-2{grid-template-columns:repeat(2,1fr);}
-  .row-5{grid-template-columns:repeat(5,1fr);}
-  .row-6{grid-template-columns:repeat(6,1fr);}
+.row{display:grid;gap:10px;margin-top:12px;}
+.row-2{grid-template-columns:repeat(2,1fr);}
+.row-5{grid-template-columns:repeat(5,1fr);}
+.row-6{grid-template-columns:repeat(6,1fr);}
 
-  .box{
-    border:2px solid #333;
-    padding:12px 6px;
-    text-align:center;
-    cursor:pointer;
-    user-select:none;
-  }
-  .box-title{font-size:20px;font-weight:bold;}
-  .box-desc{font-size:11px;margin-top:4px;}
+.box{
+  border:2px solid #333;
+  padding:12px 6px;
+  text-align:center;
+  cursor:pointer;
+}
+.box-title{font-size:20px;font-weight:bold;}
+.box-desc{font-size:11px;margin-top:4px;}
 
-  .top-bar{display:flex;align-items:center;margin-bottom:6px;}
-  .back-top{font-size:26px;cursor:pointer;}
-  .back-label{font-size:14px;margin-left:8px;color:#444;cursor:pointer;}
+.top-bar{display:flex;align-items:center;margin-bottom:6px;}
+.back-top{font-size:26px;cursor:pointer;}
+.back-label{font-size:14px;margin-left:8px;color:#444;cursor:pointer;}
 
-  .selected-container{
-    display:flex;align-items:center;justify-content:center;margin-top:16px;
-  }
-  .back-arrow{font-size:30px;cursor:pointer;margin-right:10px;}
-  .selected-box{
-    border:2px solid #333;
-    padding:10px 22px;
-    font-size:28px;font-weight:bold;
-    color:#1e6bd6;
-  }
-  .selected-desc{
-    margin-left:12px;font-size:18px;font-weight:bold;
-  }
+.selected-container{
+  display:flex;align-items:center;justify-content:center;margin-top:16px;
+}
+.back-arrow{font-size:30px;cursor:pointer;margin-right:10px;}
+.selected-box{
+  border:2px solid #333;
+  padding:10px 22px;
+  font-size:28px;font-weight:bold;
+  color:#1e6bd6;
+}
+.selected-desc{
+  margin-left:12px;font-size:18px;font-weight:bold;
+}
 
-  .label{margin-top:14px;font-size:22px;text-align:center;}
-  .text-input{
-    width:100%;height:70px;font-size:64px;
-    text-align:center;margin-top:8px;
-  }
-  .text-input::placeholder{font-size:26px;color:#aaa;}
-  .error{color:red;margin-top:8px;font-size:18px;}
+.label{margin-top:14px;font-size:22px;text-align:center;}
+.text-input{
+  width:100%;height:70px;font-size:64px;
+  text-align:center;margin-top:8px;
+}
+.text-input::placeholder{font-size:26px;color:#aaa;}
+.error{color:red;margin-top:8px;font-size:18px;}
 </style>
 </head>
 
@@ -67,31 +66,24 @@
 <div id="legajoScreen">
   <h1>Ingresá tu número de legajo</h1>
   <input id="legajoInput" type="number" inputmode="numeric">
-  <button class="primary-btn" onclick="goToOptions()">Continuar</button>
-  <div id="legajoError" class="error"></div>
+  <button id="btnContinuar" class="primary-btn">Continuar</button>
 </div>
 
 <!-- OPCIONES -->
 <div id="optionsScreen" class="hidden">
 
   <div class="top-bar">
-    <div class="back-top" onclick="backToLegajo()">←</div>
-    <div class="back-label" onclick="backToLegajo()">Volver a pantalla inicial</div>
+    <div id="btnBackTop" class="back-top">←</div>
+    <div id="btnBackLabel" class="back-label">Volver a pantalla inicial</div>
   </div>
 
-  <!-- NIVEL 1 -->
   <div class="row row-2" id="row1"></div>
-
-  <!-- NIVEL 2 -->
   <div class="row row-5" id="row2"></div>
-
-  <!-- NIVEL 3 -->
   <div class="row row-6" id="row3"></div>
 
   <div id="selectedArea" class="hidden">
-
     <div class="selected-container">
-      <div class="back-arrow" onclick="resetSelection()">←</div>
+      <div id="btnResetSelection" class="back-arrow">←</div>
       <div id="selectedBox" class="selected-box"></div>
       <div id="selectedDesc" class="selected-desc"></div>
     </div>
@@ -101,40 +93,18 @@
       <input id="textInput" class="text-input">
     </div>
 
-    <button class="primary-btn" onclick="send()">Enviar</button>
+    <button id="btnEnviar" class="primary-btn">Enviar</button>
     <div id="error" class="error"></div>
   </div>
-
 </div>
 
 <script>
-/* ========= CONFIG ========= */
-const GOOGLE_SCRIPT_URL = "PEGAR_ACA_TU_URL_DEL_SCRIPT"; // <-- IMPORTANTE
+const GOOGLE_SCRIPT_URL = "https://forms.elias-page.com/webhook/5079687e-673d-447d-af4c-81bc22af1747";
 
-// EJEMPLO. Reemplazá por tus opciones reales manteniendo esta estructura:
-const OPTIONS = [
-  // Nivel 1 (2 botones)
-  { level: 1, code: "E", desc: "Entrada", parent: null },
-  { level: 1, code: "S", desc: "Salida",  parent: null },
-
-  // Nivel 2 (depende del nivel 1)
-  { level: 2, code: "E1", desc: "Linea 1", parent: "E" },
-  { level: 2, code: "E2", desc: "Linea 2", parent: "E" },
-  { level: 2, code: "S1", desc: "Linea 1", parent: "S" },
-  { level: 2, code: "S2", desc: "Linea 2", parent: "S" },
-
-  // Nivel 3 (depende del nivel 2) + input
-  { level: 3, code: "E1A", desc: "Operación A", parent: "E1", input: { show:true, label:"Cantidad", placeholder:"0", validate:/^\d+$/ } },
-  { level: 3, code: "E1B", desc: "Operación B", parent: "E1", input: { show:false, label:"", placeholder:"", validate:/^\d+$/ } },
-  { level: 3, code: "S1A", desc: "Operación A", parent: "S1", input: { show:true, label:"Cantidad", placeholder:"0", validate:/^\d+$/ } },
-];
-
-/* ========= DOM ========= */
-const legajoScreen  = document.getElementById("legajoScreen");
-const optionsScreen = document.getElementById("optionsScreen");
-
-const legajoInput  = document.getElementById("legajoInput");
-const legajoError  = document.getElementById("legajoError");
+// ELEMENTOS
+const legajoScreen   = document.getElementById("legajoScreen");
+const optionsScreen  = document.getElementById("optionsScreen");
+const legajoInput    = document.getElementById("legajoInput");
 
 const row1 = document.getElementById("row1");
 const row2 = document.getElementById("row2");
@@ -143,179 +113,115 @@ const row3 = document.getElementById("row3");
 const selectedArea = document.getElementById("selectedArea");
 const selectedBox  = document.getElementById("selectedBox");
 const selectedDesc = document.getElementById("selectedDesc");
+const inputArea    = document.getElementById("inputArea");
+const inputLabel   = document.getElementById("inputLabel");
+const textInput    = document.getElementById("textInput");
+const error        = document.getElementById("error");
 
-const inputArea   = document.getElementById("inputArea");
-const inputLabel  = document.getElementById("inputLabel");
-const textInput   = document.getElementById("textInput");
+const btnContinuar      = document.getElementById("btnContinuar");
+const btnBackTop        = document.getElementById("btnBackTop");
+const btnBackLabel      = document.getElementById("btnBackLabel");
+const btnResetSelection = document.getElementById("btnResetSelection");
+const btnEnviar         = document.getElementById("btnEnviar");
 
-const error = document.getElementById("error");
+// OPCIONES
+const OPTIONS = [
+  {code:"E",desc:"Empecé Matriz",row:1,input:{show:true,label:"Ingresar número",placeholder:"Ejemplo: 110",validate:/^[0-9]+$/}},
+  {code:"C",desc:"Cajón",row:1,input:{show:true,label:"Ingresar número",placeholder:"Ejemplo: 1500",validate:/^[0-9]+$/}},
+  {code:"PB",desc:"Paré Baño",row:2,input:{show:false}},
+  {code:"BC",desc:"Busqué Cajón",row:2,input:{show:false}},
+  {code:"MOV",desc:"Movimiento",row:2,input:{show:false}},
+  {code:"LIMP",desc:"Limpieza",row:2,input:{show:false}},
+  {code:"Perm",desc:"Permiso",row:2,input:{show:false}},
+  {code:"AL",desc:"Ayuda Logística",row:3,input:{show:false}},
+  {code:"PR",desc:"Paré Carga Rollo",row:3,input:{show:false}},
+  {code:"CM",desc:"Cambiar Matriz",row:3,input:{show:false}},
+  {code:"RM",desc:"Rotura Matriz",row:3,input:{show:false}},
+  {code:"PC",desc:"Paré Comida",row:3,input:{show:false}},
+  {code:"RD",desc:"Rollo Fleje Doblado",row:3,input:{show:false}}
+];
 
-/* ========= STATE ========= */
-let pickedL1 = null;
-let pickedL2 = null;
 let selected = null;
 
-/* ========= UI HELPERS ========= */
-function mkBox(opt, onClick){
-  const d = document.createElement("div");
-  d.className = "box";
-  d.onclick = onClick;
-  d.innerHTML = `
-    <div class="box-title">${opt.code}</div>
-    <div class="box-desc">${opt.desc}</div>
-  `;
-  return d;
+// RENDER OPCIONES
+function render(){
+  row1.innerHTML=""; row2.innerHTML=""; row3.innerHTML="";
+  OPTIONS.forEach(o=>{
+    const d=document.createElement("div");
+    d.className="box";
+    d.innerHTML=`<div class="box-title">${o.code}</div><div class="box-desc">${o.desc}</div>`;
+    d.addEventListener("click",()=>selectOption(o));
+    (o.row===1?row1:o.row===2?row2:row3).appendChild(d);
+  });
 }
 
-function renderLevel1(){
-  row1.innerHTML = "";
-  row2.innerHTML = "";
-  row3.innerHTML = "";
-  selectedArea.classList.add("hidden");
-  inputArea.classList.add("hidden");
-  error.innerText = "";
-
-  const l1 = OPTIONS.filter(o => o.level === 1);
-  l1.forEach(opt => row1.appendChild(mkBox(opt, () => {
-    pickedL1 = opt.code;
-    pickedL2 = null;
-    selected = null;
-    renderLevel2();
-  })));
-}
-
-function renderLevel2(){
-  row2.innerHTML = "";
-  row3.innerHTML = "";
-  selectedArea.classList.add("hidden");
-  inputArea.classList.add("hidden");
-  error.innerText = "";
-
-  const l2 = OPTIONS.filter(o => o.level === 2 && o.parent === pickedL1);
-  l2.forEach(opt => row2.appendChild(mkBox(opt, () => {
-    pickedL2 = opt.code;
-    selected = null;
-    renderLevel3();
-  })));
-}
-
-function renderLevel3(){
-  row3.innerHTML = "";
-  selectedArea.classList.add("hidden");
-  inputArea.classList.add("hidden");
-  error.innerText = "";
-
-  const l3 = OPTIONS.filter(o => o.level === 3 && o.parent === pickedL2);
-  l3.forEach(opt => row3.appendChild(mkBox(opt, () => selectOption(opt))));
-}
-
-/* ========= NAV ========= */
+// NAVEGACIÓN
 function goToOptions(){
-  legajoError.innerText = "";
-
-  const legajo = String(legajoInput.value || "").trim();
-  if(!legajo){
-    legajoError.innerText = "Ingresá tu legajo para continuar.";
+  if(!legajoInput.value.trim()){
+    alert("Ingresá el número de legajo");
     return;
   }
-
-  // Mostrar pantalla 2
   legajoScreen.classList.add("hidden");
   optionsScreen.classList.remove("hidden");
-
-  // Render inicial
-  pickedL1 = null;
-  pickedL2 = null;
-  selected = null;
-  renderLevel1();
 }
 
 function backToLegajo(){
-  // Volver a pantalla 1
   optionsScreen.classList.add("hidden");
   legajoScreen.classList.remove("hidden");
-
-  // Reset visual
-  pickedL1 = null;
-  pickedL2 = null;
-  selected = null;
-  row1.innerHTML = ""; row2.innerHTML = ""; row3.innerHTML = "";
-  selectedArea.classList.add("hidden");
-  inputArea.classList.add("hidden");
-  error.innerText = "";
-  legajoError.innerText = "";
 }
 
+// SELECCIÓN
 function selectOption(opt){
   selected = opt;
-
   selectedArea.classList.remove("hidden");
   selectedBox.innerText = opt.code;
   selectedDesc.innerText = opt.desc;
+  error.innerText="";
+  textInput.value="";
 
-  error.innerText = "";
-  textInput.value = "";
-
-  const inp = opt.input || {show:false, label:"", placeholder:"", validate:/^\d+$/};
-
-  if(inp.show){
+  if(opt.input.show){
     inputArea.classList.remove("hidden");
-    inputLabel.innerText = inp.label || "";
-    textInput.placeholder = inp.placeholder || "";
-    textInput.type = "number";
-    textInput.inputMode = "numeric";
+    inputLabel.innerText = opt.input.label;
+    textInput.placeholder = opt.input.placeholder;
   } else {
     inputArea.classList.add("hidden");
   }
 }
 
 function resetSelection(){
-  selected = null;
+  selected=null;
   selectedArea.classList.add("hidden");
-  inputArea.classList.add("hidden");
-  error.innerText = "";
+  error.innerText="";
 }
 
-/* ========= SEND ========= */
+// ENVÍO A N8N
 async function send(){
   if(!selected) return;
 
-  const inp = selected.input || {show:false, validate:/^\d+$/};
+  let texto = textInput.value.trim();
 
-  let texto = String(textInput.value || "").trim();
-
-  if(inp.show){
-    if(!inp.validate.test(texto)){
-      error.innerText = "Solo se permiten números";
-      return;
-    }
-  } else {
-    texto = "";
+  if(selected.input.show && !selected.input.validate.test(texto)){
+    error.innerText="Solo se permiten números";
+    return;
   }
 
   const payload = {
-    legajo: String(legajoInput.value || "").trim(),
+    legajo: legajoInput.value.trim(),
     opcion: selected.code,
     descripcion: selected.desc,
-    texto: texto,
+    texto,
     ts: new Date().toISOString()
   };
 
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 10000);
-
   try{
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal
+    const res = await fetch(GOOGLE_SCRIPT_URL,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload)
     });
 
-    clearTimeout(t);
-
     if(!res.ok){
-      error.innerText = `No se pudo enviar (HTTP ${res.status}). Revisá WiFi o avisá al supervisor.`;
+      error.innerText=`Error ${res.status}. Avisá al supervisor.`;
       return;
     }
 
@@ -324,18 +230,22 @@ async function send(){
     resetSelection();
     optionsScreen.classList.add("hidden");
     legajoScreen.classList.remove("hidden");
-    legajoInput.value = "";
+    legajoInput.value="";
 
-  } catch(e){
-    clearTimeout(t);
-    error.innerText = "No se pudo enviar. Revisá WiFi o avisá al supervisor.";
+  }catch{
+    error.innerText="No se pudo enviar. Revisá WiFi.";
   }
 }
 
-// (Opcional) Enter en legajo para continuar
-legajoInput.addEventListener("keydown", (e) => {
-  if(e.key === "Enter") goToOptions();
-});
+// EVENTOS
+btnContinuar.addEventListener("click",goToOptions);
+btnBackTop.addEventListener("click",backToLegajo);
+btnBackLabel.addEventListener("click",backToLegajo);
+btnResetSelection.addEventListener("click",resetSelection);
+btnEnviar.addEventListener("click",send);
+legajoInput.addEventListener("keydown",e=>{if(e.key==="Enter")goToOptions();});
+
+render();
 </script>
 
 </body>
