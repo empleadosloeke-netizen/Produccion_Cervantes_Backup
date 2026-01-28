@@ -19,7 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function todayKeyAR() {
-    return new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }); // dd/mm/aaaa
+    return new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
   }
 
   /* ================= ELEMENTOS ================= */
@@ -48,11 +48,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnEnviar         = $("btnEnviar");
 
   const daySummary = $("daySummary");
-
-  // ✅ NUEVO: cartel de matriz en uso al seleccionar Cajón
   const matrizInfo = $("matrizInfo");
 
-  // Validación rápida: si falta algún id, lo muestra
   const required = {
     legajoScreen, optionsScreen, legajoInput, daySummary,
     row1, row2, row3,
@@ -84,7 +81,6 @@ document.addEventListener("DOMContentLoaded", () => {
     {code:"RD",desc:"Rollo Fleje Doblado",row:3,input:{show:false}}
   ];
 
-  // “No tiempo muerto”
   const NON_DOWNTIME_CODES = new Set(["E","C","Perm","RM","RD"]);
 
   function isDowntime(payload) {
@@ -93,14 +89,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function sameDowntime(a, b) {
     if (!a || !b) return false;
-    // “mismo tiempo muerto” = misma opcion + mismo texto
     return String(a.opcion) === String(b.opcion) && String(a.texto || "") === String(b.texto || "");
   }
 
   let selected = null;
 
-  /* ================= COOKIES (REAL) ================= */
-  const COOKIE_NAME = "prod_day_state_v6";
+  /* ================= COOKIES ================= */
+  const COOKIE_NAME = "prod_day_state_v7";
+  const QUEUE_COOKIE = "prod_send_queue_v1"; // cola simple para reintentar
   const COOKIE_DAYS = 365;
 
   function setCookie(name, value, days) {
@@ -122,10 +118,10 @@ document.addEventListener("DOMContentLoaded", () => {
   function freshDayState() {
     return {
       dayKey: todayKeyAR(),
-      lastMatrix: null,     // {opcion, descripcion, texto, ts}
-      lastCajon: null,      // {opcion, descripcion, texto, ts}
-      last2: [],            // últimos 2 mensajes del día (cualquier opción)
-      lastDowntime: null    // último tiempo muerto pendiente
+      lastMatrix: null,
+      lastCajon: null,
+      last2: [],
+      lastDowntime: null
     };
   }
 
@@ -151,6 +147,40 @@ document.addEventListener("DOMContentLoaded", () => {
     setCookie(COOKIE_NAME, JSON.stringify(state), COOKIE_DAYS);
   }
 
+  /* ================= COLA (para no perder envíos) ================= */
+  function readQueue() {
+    try {
+      const raw = getCookie(QUEUE_COOKIE);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writeQueue(arr) {
+    setCookie(QUEUE_COOKIE, JSON.stringify(arr), COOKIE_DAYS);
+  }
+
+  function enqueue(payload) {
+    const q = readQueue();
+    q.push(payload);
+    // limitamos a 30 para que el cookie no se haga gigante
+    writeQueue(q.slice(-30));
+  }
+
+  function dequeueOne() {
+    const q = readQueue();
+    const item = q.shift();
+    writeQueue(q);
+    return item;
+  }
+
+  function queueLength() {
+    return readQueue().length;
+  }
+
   /* ================= RESUMEN UI ================= */
   function renderSummary() {
     const legajo = String(legajoInput.value || "").trim();
@@ -161,6 +191,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const s = readState();
+    const qLen = queueLength();
 
     const block = (title, item) => {
       if (!item) return `
@@ -213,15 +244,13 @@ document.addEventListener("DOMContentLoaded", () => {
             ${item.opcion} — ${item.descripcion}<br>
             ${item.texto ? `Dato: <b>${item.texto}</b><br>` : ""}
             ${item.ts ? `Fecha: ${formatDateTimeAR(item.ts)}` : ""}
-            <div style="margin-top:6px;color:#a15c00;">
-              Solo podés enviar el MISMO tiempo muerto (2da vez) o enviar E/C/Perm/RM/RD.
-            </div>
           </div>
         </div>`;
     };
 
     daySummary.className = "";
     daySummary.innerHTML = [
+      qLen ? `<div class="day-item"><div class="t1">Pendientes de envío</div><div class="t2"><b>${qLen}</b> (se reintentan automáticamente)</div></div>` : "",
       block("Última Matriz (E)", s.lastMatrix),
       block("Último Cajón (C)", s.lastCajon),
       last2Block("Últimos 2 mensajes del día", s.last2),
@@ -229,7 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ].join("");
   }
 
-  /* ================= NUEVO: Mostrar Matriz en uso al elegir Cajón ================= */
+  /* ================= CARTEL MATRIZ EN CAJÓN ================= */
   function renderMatrizInfoForCajon() {
     const s = readState();
     const lm = s.lastMatrix;
@@ -252,17 +281,6 @@ document.addEventListener("DOMContentLoaded", () => {
       `Matriz en uso: <span style="font-size:22px;">${lm.texto}</span>
        <small>Última matriz: ${lm.ts ? formatDateTimeAR(lm.ts) : ""}</small>`;
   }
-
-  // refresco suave al tipear
-  let legajoTimer = null;
-  legajoInput.addEventListener("input", () => {
-    clearTimeout(legajoTimer);
-    legajoTimer = setTimeout(() => {
-      renderSummary();
-      // si está en C, refrescar cartel
-      renderMatrizInfoForCajon();
-    }, 150);
-  });
 
   /* ================= RENDER OPCIONES ================= */
   function renderOptions() {
@@ -311,7 +329,6 @@ document.addEventListener("DOMContentLoaded", () => {
       textInput.placeholder = "";
     }
 
-    // ✅ nuevo
     renderMatrizInfoForCajon();
   }
 
@@ -324,7 +341,7 @@ document.addEventListener("DOMContentLoaded", () => {
     matrizInfo.innerHTML = "";
   }
 
-  /* ================= REGLAS: TInicio ================= */
+  /* ================= TInicio ================= */
   function computeTInicioForC(state) {
     if (state.lastCajon && state.lastCajon.ts) return state.lastCajon.ts;
     if (state.lastMatrix && state.lastMatrix.ts) return state.lastMatrix.ts;
@@ -352,18 +369,88 @@ document.addEventListener("DOMContentLoaded", () => {
     return { ok: true, isSecondSameDowntime: true, downtimeTs: ld.ts || "" };
   }
 
-  /* ================= ENVÍO ================= */
-  async function send() {
+  /* ================= ENVÍO RÁPIDO ================= */
+  function updateCookiesAfterSend(payload) {
+    const s = readState();
+    const item = {
+      opcion: payload.opcion,
+      descripcion: payload.descripcion,
+      texto: payload.texto || "",
+      ts: payload.tsEvent
+    };
+
+    // últimos 2
+    s.last2.unshift(item);
+    s.last2 = s.last2.slice(0, 2);
+
+    // E: si cambia respecto al anterior => borrar lastCajon
+    if (payload.opcion === "E") {
+      if (s.lastMatrix && String(s.lastMatrix.texto||"") !== String(item.texto||"")) {
+        s.lastCajon = null;
+      }
+      s.lastMatrix = item;
+      s.lastDowntime = null;
+    }
+
+    // C: actualiza cajón y limpia downtime
+    if (payload.opcion === "C") {
+      s.lastCajon = item;
+      s.lastDowntime = null;
+    }
+
+    // Perm/RM/RD limpian downtime
+    if (NON_DOWNTIME_CODES.has(payload.opcion) && payload.opcion !== "E" && payload.opcion !== "C") {
+      s.lastDowntime = null;
+    }
+
+    // Downtime
+    if (isDowntime(payload)) {
+      if (!s.lastDowntime) {
+        s.lastDowntime = item;
+      } else if (sameDowntime(s.lastDowntime, payload)) {
+        s.lastDowntime = null; // segunda vez: limpia
+      } else {
+        s.lastDowntime = item;
+      }
+    }
+
+    writeState(s);
+  }
+
+  async function postToSheet(payload) {
+    // En no-cors no podés leer respuesta, pero la petición igual sale.
+    return fetch(GOOGLE_SHEET_WEBAPP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+      mode: "no-cors",
+      keepalive: true // ayuda si cambia de pantalla rápido
+    });
+  }
+
+  // Reintento liviano: intenta mandar 1 pendiente por vez
+  async function flushQueueOnce() {
+    const q = readQueue();
+    if (!q.length) return;
+
+    const item = q[0];
+    try {
+      await postToSheet(item);
+      // lo damos por enviado
+      dequeueOne();
+      renderSummary();
+    } catch {
+      // si falla, lo dejamos en cola
+    }
+  }
+
+  async function sendFast() {
     if (!selected) return;
 
     const legajo = String(legajoInput.value || "").trim();
-    if (!legajo) {
-      alert("Ingresá el número de legajo");
-      return;
-    }
+    if (!legajo) { alert("Ingresá el número de legajo"); return; }
 
     const texto = String(textInput.value || "").trim();
-
     if (selected.input.show && !selected.input.validate.test(texto)) {
       error.innerText = "Solo se permiten números";
       return;
@@ -382,88 +469,45 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const stateBefore = readState();
 
+    // ✅ BLOQUEO: si es Cajón y NO hay matriz => no deja enviar
     if (payload.opcion === "C") {
+      if (!stateBefore.lastMatrix || !stateBefore.lastMatrix.ts) {
+        alert('Primero tenés que enviar "E (Empecé Matriz)" antes de registrar un Cajón.');
+        return;
+      }
       payload.tInicio = computeTInicioForC(stateBefore);
     }
 
     const v = validateBeforeSend(payload);
-    if (!v.ok) {
-      alert(v.msg);
-      return;
-    }
+    if (!v.ok) { alert(v.msg); return; }
 
     if (v.isSecondSameDowntime) {
       payload.tInicio = v.downtimeTs || "";
     }
 
-    try {
-      await fetch(GOOGLE_SHEET_WEBAPP_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(payload),
-        mode: "no-cors"
-      });
+    // ✅ UI INSTANTÁNEA
+    btnEnviar.disabled = true;
+    const prevText = btnEnviar.innerText;
+    btnEnviar.innerText = "Enviando...";
 
-      // Actualizo cookies con el MISMO tsEvent
-      const s = readState();
-      const item = {
-        opcion: payload.opcion,
-        descripcion: payload.descripcion,
-        texto: payload.texto || "",
-        ts: payload.tsEvent
-      };
+    // 1) Actualizo cookies YA
+    updateCookiesAfterSend(payload);
+    renderSummary();
 
-      // últimos 2
-      s.last2.unshift(item);
-      s.last2 = s.last2.slice(0, 2);
+    // 2) Vuelvo YA a pantalla inicial
+    resetSelection();
+    optionsScreen.classList.add("hidden");
+    legajoScreen.classList.remove("hidden");
 
-      // E: si cambia respecto al anterior => borrar lastCajon
-      if (payload.opcion === "E") {
-        if (s.lastMatrix && String(s.lastMatrix.texto||"") !== String(item.texto||"")) {
-          s.lastCajon = null;
-        }
-        s.lastMatrix = item;
-        s.lastDowntime = null;
-      }
+    // 3) Encolo y mando "en background"
+    enqueue(payload);
+    flushQueueOnce();
 
-      // C: actualiza cajón y limpia downtime
-      if (payload.opcion === "C") {
-        s.lastCajon = item;
-        s.lastDowntime = null;
-      }
-
-      // Perm/RM/RD limpian downtime
-      if (NON_DOWNTIME_CODES.has(payload.opcion) && payload.opcion !== "E" && payload.opcion !== "C") {
-        s.lastDowntime = null;
-      }
-
-      // Downtime
-      if (isDowntime(payload)) {
-        if (!s.lastDowntime) {
-          s.lastDowntime = item;
-        } else if (sameDowntime(s.lastDowntime, payload)) {
-          s.lastDowntime = null;
-        } else {
-          s.lastDowntime = item;
-        }
-      }
-
-      writeState(s);
-      renderSummary();
-
-      // si estás en C, refresca el cartel de matriz en uso
-      renderMatrizInfoForCajon();
-
-      alert("Registro enviado correctamente");
-
-      resetSelection();
-      optionsScreen.classList.add("hidden");
-      legajoScreen.classList.remove("hidden");
-
-    } catch (e) {
-      console.log("FETCH ERROR:", e);
-      error.innerText = "No se pudo enviar. Revisá WiFi.";
-    }
+    // 4) Reactivar botón (sin esperar red)
+    setTimeout(() => {
+      btnEnviar.disabled = false;
+      btnEnviar.innerText = prevText;
+    }, 250);
   }
 
   /* ================= EVENTOS ================= */
@@ -471,13 +515,17 @@ document.addEventListener("DOMContentLoaded", () => {
   btnBackTop.addEventListener("click", backToLegajo);
   btnBackLabel.addEventListener("click", backToLegajo);
   btnResetSelection.addEventListener("click", resetSelection);
-  btnEnviar.addEventListener("click", send);
+  btnEnviar.addEventListener("click", sendFast);
   legajoInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goToOptions(); });
 
   /* ================= INIT ================= */
   renderOptions();
   renderSummary();
   renderMatrizInfoForCajon();
-  console.log("app.js cargado OK ✅ (cookies activas + matriz en cajón)");
+
+  // cada vez que vuelve la app al frente, intentamos enviar 1 pendiente
+  window.addEventListener("focus", () => flushQueueOnce());
+
+  console.log("app.js cargado OK ✅ (cookies + envío rápido)");
 
 });
