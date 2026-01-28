@@ -49,12 +49,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const daySummary = $("daySummary");
 
+  // ✅ NUEVO: cartel de matriz en uso al seleccionar Cajón
+  const matrizInfo = $("matrizInfo");
+
   // Validación rápida: si falta algún id, lo muestra
   const required = {
     legajoScreen, optionsScreen, legajoInput, daySummary,
     row1, row2, row3,
     selectedArea, selectedBox, selectedDesc, inputArea, inputLabel, textInput, error,
-    btnContinuar, btnBackTop, btnBackLabel, btnResetSelection, btnEnviar
+    btnContinuar, btnBackTop, btnBackLabel, btnResetSelection, btnEnviar,
+    matrizInfo
   };
   const missing = Object.entries(required).filter(([,v]) => !v).map(([k]) => k);
   if (missing.length) {
@@ -96,7 +100,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let selected = null;
 
   /* ================= COOKIES (REAL) ================= */
-  const COOKIE_NAME = "prod_day_state_v5";
+  const COOKIE_NAME = "prod_day_state_v6";
   const COOKIE_DAYS = 365;
 
   function setCookie(name, value, days) {
@@ -210,7 +214,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ${item.texto ? `Dato: <b>${item.texto}</b><br>` : ""}
             ${item.ts ? `Fecha: ${formatDateTimeAR(item.ts)}` : ""}
             <div style="margin-top:6px;color:#a15c00;">
-              Solo podés repetir el mismo tiempo muerto (2da vez) o enviar E/C/Perm/RM/RD.
+              Solo podés enviar el MISMO tiempo muerto (2da vez) o enviar E/C/Perm/RM/RD.
             </div>
           </div>
         </div>`;
@@ -225,11 +229,39 @@ document.addEventListener("DOMContentLoaded", () => {
     ].join("");
   }
 
+  /* ================= NUEVO: Mostrar Matriz en uso al elegir Cajón ================= */
+  function renderMatrizInfoForCajon() {
+    const s = readState();
+    const lm = s.lastMatrix;
+
+    if (!selected || selected.code !== "C") {
+      matrizInfo.classList.add("hidden");
+      matrizInfo.innerHTML = "";
+      return;
+    }
+
+    matrizInfo.classList.remove("hidden");
+
+    if (!lm || !lm.texto) {
+      matrizInfo.innerHTML =
+        `⚠️ No hay matriz registrada hoy.<br><small>Enviá primero "E (Empecé Matriz)"</small>`;
+      return;
+    }
+
+    matrizInfo.innerHTML =
+      `Matriz en uso: <span style="font-size:22px;">${lm.texto}</span>
+       <small>Última matriz: ${lm.ts ? formatDateTimeAR(lm.ts) : ""}</small>`;
+  }
+
   // refresco suave al tipear
   let legajoTimer = null;
   legajoInput.addEventListener("input", () => {
     clearTimeout(legajoTimer);
-    legajoTimer = setTimeout(renderSummary, 150);
+    legajoTimer = setTimeout(() => {
+      renderSummary();
+      // si está en C, refrescar cartel
+      renderMatrizInfoForCajon();
+    }, 150);
   });
 
   /* ================= RENDER OPCIONES ================= */
@@ -252,6 +284,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     legajoScreen.classList.add("hidden");
     optionsScreen.classList.remove("hidden");
+    renderMatrizInfoForCajon();
   }
 
   function backToLegajo() {
@@ -277,6 +310,9 @@ document.addEventListener("DOMContentLoaded", () => {
       inputArea.classList.add("hidden");
       textInput.placeholder = "";
     }
+
+    // ✅ nuevo
+    renderMatrizInfoForCajon();
   }
 
   function resetSelection() {
@@ -284,13 +320,13 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedArea.classList.add("hidden");
     error.innerText = "";
     textInput.value = "";
+    matrizInfo.classList.add("hidden");
+    matrizInfo.innerHTML = "";
   }
 
   /* ================= REGLAS: TInicio ================= */
   function computeTInicioForC(state) {
-    // Si cookie de último cajón no está vacía => enviar tiempo del cookie del último cajón
     if (state.lastCajon && state.lastCajon.ts) return state.lastCajon.ts;
-    // Si cookie de último cajón está vacía => enviar tiempo del cookie de la última matriz
     if (state.lastMatrix && state.lastMatrix.ts) return state.lastMatrix.ts;
     return "";
   }
@@ -302,10 +338,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!ld) return { ok: true };
 
-    // si lo que envío NO es downtime => permitido
     if (!isDowntime(payload)) return { ok: true };
 
-    // si es downtime y es distinto => bloquear
     if (!sameDowntime(ld, payload)) {
       return {
         ok: false,
@@ -315,7 +349,6 @@ document.addEventListener("DOMContentLoaded", () => {
       };
     }
 
-    // es el mismo => esto es “segunda vez”
     return { ok: true, isSecondSameDowntime: true, downtimeTs: ld.ts || "" };
   }
 
@@ -336,33 +369,29 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const tsEvent = isoNowSeconds(); // ✅ timestamp unificado
+    const tsEvent = isoNowSeconds();
 
-    // armo payload
     const payload = {
       legajo,
       opcion: selected.code,
       descripcion: selected.desc,
       texto,
-      tsEvent,   // ✅ el Apps Script usa esto para Fecha/Hora
-      tInicio: "" // ISO (Apps Script lo formatea a HH:mm:ss)
+      tsEvent,
+      tInicio: ""
     };
 
     const stateBefore = readState();
 
-    // TInicio para Cajón (C)
     if (payload.opcion === "C") {
       payload.tInicio = computeTInicioForC(stateBefore);
     }
 
-    // Validación tiempo muerto (detecta 2da vez)
     const v = validateBeforeSend(payload);
     if (!v.ok) {
       alert(v.msg);
       return;
     }
 
-    // Si es 2da vez del mismo tiempo muerto => TInicio = ts del cookie del downtime
     if (v.isSecondSameDowntime) {
       payload.tInicio = v.downtimeTs || "";
     }
@@ -375,7 +404,7 @@ document.addEventListener("DOMContentLoaded", () => {
         mode: "no-cors"
       });
 
-      // Actualizo cookies (mismo tsEvent para todo)
+      // Actualizo cookies con el MISMO tsEvent
       const s = readState();
       const item = {
         opcion: payload.opcion,
@@ -384,21 +413,20 @@ document.addEventListener("DOMContentLoaded", () => {
         ts: payload.tsEvent
       };
 
-      // últimos 2 mensajes
+      // últimos 2
       s.last2.unshift(item);
       s.last2 = s.last2.slice(0, 2);
 
-      // regla E: si es distinto al anterior, borrar último cajón
+      // E: si cambia respecto al anterior => borrar lastCajon
       if (payload.opcion === "E") {
         if (s.lastMatrix && String(s.lastMatrix.texto||"") !== String(item.texto||"")) {
           s.lastCajon = null;
         }
         s.lastMatrix = item;
-        // E limpia downtime pendiente
         s.lastDowntime = null;
       }
 
-      // C actualiza cajón y limpia downtime
+      // C: actualiza cajón y limpia downtime
       if (payload.opcion === "C") {
         s.lastCajon = item;
         s.lastDowntime = null;
@@ -409,22 +437,22 @@ document.addEventListener("DOMContentLoaded", () => {
         s.lastDowntime = null;
       }
 
-      // Si es downtime:
+      // Downtime
       if (isDowntime(payload)) {
         if (!s.lastDowntime) {
-          // primera vez => queda pendiente
           s.lastDowntime = item;
         } else if (sameDowntime(s.lastDowntime, payload)) {
-          // segunda vez => limpiar
           s.lastDowntime = null;
         } else {
-          // no debería pasar por la validación
           s.lastDowntime = item;
         }
       }
 
       writeState(s);
       renderSummary();
+
+      // si estás en C, refresca el cartel de matriz en uso
+      renderMatrizInfoForCajon();
 
       alert("Registro enviado correctamente");
 
@@ -449,6 +477,7 @@ document.addEventListener("DOMContentLoaded", () => {
   /* ================= INIT ================= */
   renderOptions();
   renderSummary();
-  console.log("app.js cargado OK ✅ (cookies activas)");
+  renderMatrizInfoForCajon();
+  console.log("app.js cargado OK ✅ (cookies activas + matriz en cajón)");
 
 });
