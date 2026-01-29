@@ -1,9 +1,10 @@
 document.addEventListener("DOMContentLoaded", () => {
 
+  // ✅ TU WEB APP (Apps Script)
   const GOOGLE_SHEET_WEBAPP_URL =
     "https://script.google.com/macros/s/AKfycbwbYx8fqFvG3MeKzLOSpbAJ0mZL1P2mVcKFIneXCOh6iqg8K_RbSwGofIJZMHJHITJy/exec";
 
-  /* ================= TIEMPO UNIFICADO (cliente) ================= */
+  /* ================= TIEMPO (sin milisegundos) ================= */
   function isoNowSeconds() {
     const d = new Date();
     d.setMilliseconds(0);
@@ -29,6 +30,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const optionsScreen = $("optionsScreen");
   const legajoInput   = $("legajoInput");
 
+  const btnContinuar      = $("btnContinuar");
+  const btnBackTop        = $("btnBackTop");
+  const btnBackLabel      = $("btnBackLabel");
+
   const row1 = $("row1");
   const row2 = $("row2");
   const row3 = $("row3");
@@ -39,28 +44,26 @@ document.addEventListener("DOMContentLoaded", () => {
   const inputArea    = $("inputArea");
   const inputLabel   = $("inputLabel");
   const textInput    = $("textInput");
-  const error        = $("error");
-
-  const btnContinuar      = $("btnContinuar");
-  const btnBackTop        = $("btnBackTop");
-  const btnBackLabel      = $("btnBackLabel");
   const btnResetSelection = $("btnResetSelection");
-  const btnEnviar         = $("btnEnviar");
+  const btnEnviar = $("btnEnviar");
+  const error = $("error");
 
-  const daySummary = $("daySummary");
-  const matrizInfo = $("matrizInfo");
+  const daySummary = $("daySummary");   // resumen del día (en este dispositivo)
+  const matrizInfo = $("matrizInfo");   // cartel de matriz en uso al seleccionar C
 
+  // Check ids
   const required = {
-    legajoScreen, optionsScreen, legajoInput, daySummary,
+    legajoScreen, optionsScreen, legajoInput,
+    btnContinuar, btnBackTop, btnBackLabel,
     row1, row2, row3,
-    selectedArea, selectedBox, selectedDesc, inputArea, inputLabel, textInput, error,
-    btnContinuar, btnBackTop, btnBackLabel, btnResetSelection, btnEnviar,
-    matrizInfo
+    selectedArea, selectedBox, selectedDesc, inputArea, inputLabel, textInput,
+    btnResetSelection, btnEnviar, error,
+    daySummary, matrizInfo
   };
   const missing = Object.entries(required).filter(([,v]) => !v).map(([k]) => k);
   if (missing.length) {
     console.error("FALTAN ELEMENTOS EN EL HTML (ids):", missing);
-    alert("Error: faltan elementos en el HTML. Mirá la consola (F12).");
+    alert("Error: faltan elementos en el HTML. Mirá consola (F12).");
     return;
   }
 
@@ -81,10 +84,10 @@ document.addEventListener("DOMContentLoaded", () => {
     {code:"RD",desc:"Rollo Fleje Doblado",row:3,input:{show:false}}
   ];
 
-  const NON_DOWNTIME_CODES = new Set(["Perm","RM","RD"]);
+  const NON_DOWNTIME_CODES = new Set(["E","C","Perm","RM","RD"]);
 
-  function isDowntime(payload) {
-    return !NON_DOWNTIME_CODES.has(payload.opcion);
+  function isDowntime(opcion) {
+    return !NON_DOWNTIME_CODES.has(opcion);
   }
 
   function sameDowntime(a, b) {
@@ -94,45 +97,51 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let selected = null;
 
-  /* ================= localStorage (ESTADO + COLA) ================= */
-  const LS_STATE_KEY = "prod_day_state_ls_v1";
-  const LS_QUEUE_KEY = "prod_send_queue_ls_v1";
+  /* ================= STORAGE POR LEGAJO ================= */
+  const LS_PREFIX = "prod_state_v1";      // estado por (dia + legajo)
+  const LS_QUEUE  = "prod_queue_v1";      // cola global (contiene legajo en cada item)
 
-  function freshDayState() {
+  function legajoKey() {
+    return String(legajoInput.value || "").trim();
+  }
+
+  function stateKeyFor(legajo) {
+    return `${LS_PREFIX}::${todayKeyAR()}::${String(legajo).trim()}`;
+  }
+
+  function freshState() {
     return {
-      dayKey: todayKeyAR(),
-      lastMatrix: null,
-      lastCajon: null,
-      last2: [],
-      lastDowntime: null
+      lastMatrix: null,     // {opcion, descripcion, texto, ts}
+      lastCajon: null,      // {opcion, descripcion, texto, ts}
+      lastDowntime: null,   // {opcion, descripcion, texto, ts}
+      last2: []             // array de items (max 2)
     };
   }
 
-  function readState() {
+  function readStateForLegajo(legajo) {
     try {
-      const raw = localStorage.getItem(LS_STATE_KEY);
-      if (!raw) return freshDayState();
-      const obj = JSON.parse(raw);
-      if (!obj || typeof obj !== "object") return freshDayState();
-      if (obj.dayKey !== todayKeyAR()) return freshDayState();
-
-      obj.last2 = Array.isArray(obj.last2) ? obj.last2 : [];
-      obj.lastMatrix = obj.lastMatrix || null;
-      obj.lastCajon = obj.lastCajon || null;
-      obj.lastDowntime = obj.lastDowntime || null;
-      return obj;
+      const raw = localStorage.getItem(stateKeyFor(legajo));
+      if (!raw) return freshState();
+      const s = JSON.parse(raw);
+      if (!s || typeof s !== "object") return freshState();
+      s.last2 = Array.isArray(s.last2) ? s.last2 : [];
+      s.lastMatrix = s.lastMatrix || null;
+      s.lastCajon = s.lastCajon || null;
+      s.lastDowntime = s.lastDowntime || null;
+      return s;
     } catch {
-      return freshDayState();
+      return freshState();
     }
   }
 
-  function writeState(state) {
-    localStorage.setItem(LS_STATE_KEY, JSON.stringify(state));
+  function writeStateForLegajo(legajo, state) {
+    localStorage.setItem(stateKeyFor(legajo), JSON.stringify(state));
   }
 
+  /* ================= COLA PENDIENTES (GLOBAL) ================= */
   function readQueue() {
     try {
-      const raw = localStorage.getItem(LS_QUEUE_KEY);
+      const raw = localStorage.getItem(LS_QUEUE);
       if (!raw) return [];
       const arr = JSON.parse(raw);
       return Array.isArray(arr) ? arr : [];
@@ -142,7 +151,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function writeQueue(arr) {
-    localStorage.setItem(LS_QUEUE_KEY, JSON.stringify(arr.slice(-50)));
+    // límite para que no crezca infinito
+    localStorage.setItem(LS_QUEUE, JSON.stringify(arr.slice(-50)));
   }
 
   function enqueue(payload) {
@@ -162,24 +172,27 @@ document.addEventListener("DOMContentLoaded", () => {
     return readQueue().length;
   }
 
-  /* ================= RESUMEN UI ================= */
+  /* ================= UI: RESUMEN POR LEGAJO ================= */
   function renderSummary() {
-    const legajo = String(legajoInput.value || "").trim();
-    if (!legajo) {
+    const leg = legajoKey();
+
+    if (!leg) {
       daySummary.className = "history-empty";
       daySummary.innerText = "Ingresá tu legajo para ver el resumen";
       return;
     }
 
-    const s = readState();
+    const s = readStateForLegajo(leg);
     const qLen = queueLength();
 
-    const block = (title, item) => {
-      if (!item) return `
-        <div class="day-item">
-          <div class="t1">${title}</div>
-          <div class="t2">—</div>
-        </div>`;
+    const renderItem = (title, item) => {
+      if (!item) {
+        return `
+          <div class="day-item">
+            <div class="t1">${title}</div>
+            <div class="t2">—</div>
+          </div>`;
+      }
       return `
         <div class="day-item">
           <div class="t1">${title}</div>
@@ -191,15 +204,17 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>`;
     };
 
-    const last2Block = (title, arr) => {
-      if (!arr || !arr.length) return `
-        <div class="day-item">
-          <div class="t1">${title}</div>
-          <div class="t2">—</div>
-        </div>`;
+    const renderLast2 = (arr) => {
+      if (!arr || !arr.length) {
+        return `
+          <div class="day-item">
+            <div class="t1">Últimos 2 mensajes del día</div>
+            <div class="t2">—</div>
+          </div>`;
+      }
       return `
         <div class="day-item">
-          <div class="t1">${title}</div>
+          <div class="t1">Últimos 2 mensajes del día</div>
           <div class="t2">
             ${arr.map(it => `
               <div style="margin-top:6px;">
@@ -212,37 +227,28 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>`;
     };
 
-    const downtimeBlock = (title, item) => {
-      if (!item) return `
-        <div class="day-item">
-          <div class="t1">${title}</div>
-          <div class="t2">—</div>
-        </div>`;
-      return `
-        <div class="day-item">
-          <div class="t1">${title} <span class="badge-warn">pendiente</span></div>
-          <div class="t2">
-            ${item.opcion} — ${item.descripcion}<br>
-            ${item.texto ? `Dato: <b>${item.texto}</b><br>` : ""}
-            ${item.ts ? `Fecha: ${formatDateTimeAR(item.ts)}` : ""}
-          </div>
-        </div>`;
-    };
-
     daySummary.className = "";
     daySummary.innerHTML = [
-      qLen ? `<div class="day-item"><div class="t1">Pendientes de envío</div><div class="t2"><b>${qLen}</b> (se reintentan)</div></div>` : "",
-      block("Última Matriz (E)", s.lastMatrix),
-      block("Último Cajón (C)", s.lastCajon),
-      last2Block("Últimos 2 mensajes del día", s.last2),
-      downtimeBlock("Último Tiempo Muerto", s.lastDowntime),
+      qLen ? `
+        <div class="day-item">
+          <div class="t1">Pendientes de envío</div>
+          <div class="t2"><b>${qLen}</b> (se reintentan)</div>
+        </div>` : "",
+      renderItem("Última Matriz (E)", s.lastMatrix),
+      renderItem("Último Cajón (C)", s.lastCajon),
+      renderLast2(s.last2),
+      renderItem("Último Tiempo Muerto", s.lastDowntime)
     ].join("");
   }
 
-  /* ================= CARTEL MATRIZ EN CAJÓN ================= */
+  /* ================= UI: MATRIZ EN USO AL ENVIAR CAJÓN ================= */
   function renderMatrizInfoForCajon() {
-    const s = readState();
-    const lm = s.lastMatrix;
+    const leg = legajoKey();
+    if (!leg) {
+      matrizInfo.classList.add("hidden");
+      matrizInfo.innerHTML = "";
+      return;
+    }
 
     if (!selected || selected.code !== "C") {
       matrizInfo.classList.add("hidden");
@@ -250,11 +256,13 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    const s = readStateForLegajo(leg);
+    const lm = s.lastMatrix;
+
     matrizInfo.classList.remove("hidden");
 
     if (!lm || !lm.texto) {
-      matrizInfo.innerHTML =
-        `⚠️ No hay matriz registrada hoy.<br><small>Enviá primero "E (Empecé Matriz)"</small>`;
+      matrizInfo.innerHTML = `⚠️ No hay matriz registrada hoy.<br><small>Enviá primero "E (Empecé Matriz)"</small>`;
       return;
     }
 
@@ -263,21 +271,21 @@ document.addEventListener("DOMContentLoaded", () => {
        <small>Última matriz: ${lm.ts ? formatDateTimeAR(lm.ts) : ""}</small>`;
   }
 
-  /* ================= RENDER OPCIONES ================= */
+  /* ================= RENDER BOTONES ================= */
   function renderOptions() {
-    row1.innerHTML=""; row2.innerHTML=""; row3.innerHTML="";
+    row1.innerHTML = ""; row2.innerHTML = ""; row3.innerHTML = "";
     OPTIONS.forEach(o => {
       const d = document.createElement("div");
       d.className = "box";
       d.innerHTML = `<div class="box-title">${o.code}</div><div class="box-desc">${o.desc}</div>`;
       d.addEventListener("click", () => selectOption(o));
-      (o.row===1 ? row1 : o.row===2 ? row2 : row3).appendChild(d);
+      (o.row === 1 ? row1 : o.row === 2 ? row2 : row3).appendChild(d);
     });
   }
 
   /* ================= NAVEGACIÓN ================= */
   function goToOptions() {
-    if (!String(legajoInput.value || "").trim()) {
+    if (!legajoKey()) {
       alert("Ingresá el número de legajo");
       return;
     }
@@ -322,22 +330,25 @@ document.addEventListener("DOMContentLoaded", () => {
     matrizInfo.innerHTML = "";
   }
 
-  /* ================= TInicio ================= */
-  function computeTInicioForC(state) {
+  /* ================= REGLAS DE "Hs Inicio" ================= */
+  function computeHsInicioForC(state) {
+    // Si hay último cajón -> usar su ts, si no -> ts de matriz
     if (state.lastCajon && state.lastCajon.ts) return state.lastCajon.ts;
     if (state.lastMatrix && state.lastMatrix.ts) return state.lastMatrix.ts;
     return "";
   }
 
   /* ================= VALIDACIÓN TIEMPO MUERTO ================= */
-  function validateBeforeSend(payload) {
-    const state = readState();
-    const ld = state.lastDowntime;
+  function validateBeforeSend(legajo, payload) {
+    const s = readStateForLegajo(legajo);
+    const ld = s.lastDowntime;
 
     if (!ld) return { ok: true };
 
-    if (!isDowntime(payload)) return { ok: true };
+    // si lo que se manda NO es tiempo muerto -> se permite
+    if (!isDowntime(payload.opcion)) return { ok: true };
 
+    // si hay TM pendiente y quieren mandar otro TM distinto -> bloquear
     if (!sameDowntime(ld, payload)) {
       return {
         ok: false,
@@ -347,12 +358,13 @@ document.addEventListener("DOMContentLoaded", () => {
       };
     }
 
+    // si es el mismo TM, es "segunda vez" -> se limpia luego y Hs Inicio = ts del TM pendiente
     return { ok: true, isSecondSameDowntime: true, downtimeTs: ld.ts || "" };
   }
 
-  /* ================= COOKIES-LOGIC -> STATE UPDATE ================= */
-  function updateStateAfterSend(payload) {
-    const s = readState();
+  /* ================= ACTUALIZAR ESTADO POR LEGAJO ================= */
+  function updateStateAfterSend(legajo, payload) {
+    const s = readStateForLegajo(legajo);
     const item = {
       opcion: payload.opcion,
       descripcion: payload.descripcion,
@@ -360,36 +372,55 @@ document.addEventListener("DOMContentLoaded", () => {
       ts: payload.tsEvent
     };
 
+    // últimos 2
     s.last2.unshift(item);
     s.last2 = s.last2.slice(0, 2);
 
+    // E: si cambia respecto a anterior => borrar último cajón
     if (payload.opcion === "E") {
-      if (s.lastMatrix && String(s.lastMatrix.texto||"") !== String(item.texto||"")) {
+      if (s.lastMatrix && String(s.lastMatrix.texto || "") !== String(item.texto || "")) {
         s.lastCajon = null;
       }
       s.lastMatrix = item;
       s.lastDowntime = null;
+      writeStateForLegajo(legajo, s);
+      return;
     }
 
+    // C: actualiza cajón y limpia downtime
     if (payload.opcion === "C") {
       s.lastCajon = item;
       s.lastDowntime = null;
+      writeStateForLegajo(legajo, s);
+      return;
     }
 
-    if (NON_DOWNTIME_CODES.has(payload.opcion) && payload.opcion !== "E" && payload.opcion !== "C") {
+    // Perm/RM/RD limpian downtime
+    if (NON_DOWNTIME_CODES.has(payload.opcion)) {
       s.lastDowntime = null;
+      writeStateForLegajo(legajo, s);
+      return;
     }
 
-    if (isDowntime(payload)) {
-      if (!s.lastDowntime) s.lastDowntime = item;
-      else if (sameDowntime(s.lastDowntime, payload)) s.lastDowntime = null;
-      else s.lastDowntime = item;
+    // Downtime
+    if (isDowntime(payload.opcion)) {
+      if (!s.lastDowntime) {
+        s.lastDowntime = item;                // primera vez
+      } else if (sameDowntime(s.lastDowntime, payload)) {
+        s.lastDowntime = null;                // segunda vez del mismo -> limpia
+      } else {
+        s.lastDowntime = item;                // distinto -> reemplaza (igual esto normalmente lo bloqueamos)
+      }
+      writeStateForLegajo(legajo, s);
+      return;
     }
 
-    writeState(s);
+    writeStateForLegajo(legajo, s);
   }
 
+  /* ================= ENVÍO (NO BLOQUEANTE) ================= */
   async function postToSheet(payload) {
+    // no-cors: no podemos leer respuesta, pero el POST sale igual
     return fetch(GOOGLE_SHEET_WEBAPP_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -402,22 +433,21 @@ document.addEventListener("DOMContentLoaded", () => {
   async function flushQueueOnce() {
     const q = readQueue();
     if (!q.length) return;
-
     const item = q[0];
     try {
       await postToSheet(item);
       dequeueOne();
-      renderSummary();
+      // no tocamos estados acá porque ya fueron actualizados en modo optimista
     } catch {
-      // lo dejamos pendiente
+      // queda pendiente
     }
+    renderSummary();
   }
 
-  /* ================= ENVÍO RÁPIDO ================= */
   async function sendFast() {
     if (!selected) return;
 
-    const legajo = String(legajoInput.value || "").trim();
+    const legajo = legajoKey();
     if (!legajo) { alert("Ingresá el número de legajo"); return; }
 
     const texto = String(textInput.value || "").trim();
@@ -428,52 +458,59 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const tsEvent = isoNowSeconds();
 
+    // payload base
     const payload = {
       legajo,
       opcion: selected.code,
       descripcion: selected.desc,
       texto,
       tsEvent,
-      tInicio: ""
+      "Hs Inicio": ""   // ✅ NUEVO NOMBRE
     };
 
-    const stateBefore = readState();
+    // reglas especiales
+    const stateBefore = readStateForLegajo(legajo);
 
-    // ✅ BLOQUEO: C sin matriz
+    // ✅ Bloqueo: no permitir C si no hay matriz
     if (payload.opcion === "C") {
       if (!stateBefore.lastMatrix || !stateBefore.lastMatrix.ts) {
         alert('Primero tenés que enviar "E (Empecé Matriz)" antes de registrar un Cajón.');
         return;
       }
-      payload.tInicio = computeTInicioForC(stateBefore);
+      payload["Hs Inicio"] = computeHsInicioForC(stateBefore);
     }
 
-    const v = validateBeforeSend(payload);
-    if (!v.ok) { alert(v.msg); return; }
+    // ✅ Validación TM pendiente
+    const v = validateBeforeSend(legajo, payload);
+    if (!v.ok) {
+      alert(v.msg);
+      return;
+    }
 
+    // ✅ Si es 2da vez del mismo TM -> Hs Inicio = ts del TM pendiente
     if (v.isSecondSameDowntime) {
-      payload.tInicio = v.downtimeTs || "";
+      payload["Hs Inicio"] = v.downtimeTs || "";
     }
 
-    // UI instantánea
+    // UI rápida
     btnEnviar.disabled = true;
     const prevText = btnEnviar.innerText;
     btnEnviar.innerText = "Enviando...";
 
-    // 1) Estado local inmediato
-    updateStateAfterSend(payload);
+    // 1) Actualizo estado local por legajo YA
+    updateStateAfterSend(legajo, payload);
     renderSummary();
 
-    // 2) volver ya
+    // 2) Vuelvo YA a pantalla inicial
     resetSelection();
     optionsScreen.classList.add("hidden");
     legajoScreen.classList.remove("hidden");
 
-    // 3) cola + envío
+    // 3) Encolo + intento enviar 1
     enqueue(payload);
     flushQueueOnce();
 
-    // 4) reactivar
+    // 4) Reactivo botón
     setTimeout(() => {
       btnEnviar.disabled = false;
       btnEnviar.innerText = prevText;
@@ -488,13 +525,22 @@ document.addEventListener("DOMContentLoaded", () => {
   btnEnviar.addEventListener("click", sendFast);
   legajoInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goToOptions(); });
 
+  // 🔁 cuando cambia el legajo, refrescar resumen (por legajo) y limpiar selección visual
+  let legajoTimer = null;
+  legajoInput.addEventListener("input", () => {
+    clearTimeout(legajoTimer);
+    legajoTimer = setTimeout(() => {
+      renderSummary();
+    }, 120);
+  });
+
+  // reintento al volver a la pestaña
+  window.addEventListener("focus", () => flushQueueOnce());
+
   /* ================= INIT ================= */
   renderOptions();
   renderSummary();
-  renderMatrizInfoForCajon();
 
-  window.addEventListener("focus", () => flushQueueOnce());
-
-  console.log("app.js cargado OK ✅ (localStorage + envío rápido)");
+  console.log("app.js OK ✅ (estado por legajo + Hs Inicio)");
 
 });
