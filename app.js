@@ -11,7 +11,8 @@ document.addEventListener("DOMContentLoaded", () => {
       "prod_send_queue_ls_v1",
       "legajo_history_v1",
       "prod_day_state_v7",
-      "prod_state_ls_v1"
+      "prod_state_ls_v1",
+      "prod_queue_v1"
     ].forEach(k => localStorage.removeItem(k));
 
     localStorage.setItem(MIGRATION_FLAG, "1");
@@ -311,24 +312,22 @@ document.addEventListener("DOMContentLoaded", () => {
     return "";
   }
 
-  /* ================= VALIDACIÓN TIEMPO MUERTO =================
-     ✅ NUEVO: si hay TM pendiente, BLOQUEA también E y C.
-     Solo permite:
-       - el MISMO TM (para cerrarlo)
-       - Perm / RM / RD
-  ============================================================ */
+  /* ================= VALIDACIÓN TM =================
+     Si hay TM pendiente:
+       - Perm / RM / RD permitidos
+       - El MISMO TM permitido (para cerrarlo)
+       - TODO lo demás bloqueado (incluye E y C)
+  =================================================== */
   function validateBeforeSend(legajo, payload) {
     const s = readStateForLegajo(legajo);
     const ld = s.lastDowntime;
 
     if (!ld) return { ok:true };
 
-    // Perm/RM/RD siempre permitidos
     if (payload.opcion === "Perm" || payload.opcion === "RM" || payload.opcion === "RD") {
       return { ok:true };
     }
 
-    // Si no es el mismo TM, bloquea (incluye E y C)
     if (!sameDowntime(ld, payload)) {
       return {
         ok:false,
@@ -337,7 +336,6 @@ document.addEventListener("DOMContentLoaded", () => {
       };
     }
 
-    // Si es el mismo TM (2da vez), permitimos y marcamos
     return { ok:true, isSecondSameDowntime:true, downtimeTs: ld.ts || "" };
   }
 
@@ -366,15 +364,17 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    // Perm / RM / RD limpian TM pendiente
     if (payload.opcion === "Perm" || payload.opcion === "RM" || payload.opcion === "RD") {
       s.lastDowntime = null;
       writeStateForLegajo(legajo, s);
       return;
     }
 
+    // Tiempo muerto
     if (isDowntime(payload.opcion)) {
       if (!s.lastDowntime) s.lastDowntime = item;
-      else if (sameDowntime(s.lastDowntime, payload)) s.lastDowntime = null;
+      else if (sameDowntime(s.lastDowntime, payload)) s.lastDowntime = null; // 2da vez mismo TM => limpia
       else s.lastDowntime = item;
       writeStateForLegajo(legajo, s);
       return;
@@ -435,18 +435,25 @@ document.addEventListener("DOMContentLoaded", () => {
       descripcion: selected.desc,
       texto,
       tsEvent,
-      "Hs Inicio": ""
+      "Hs Inicio": "",
+      matriz: "" // ✅ nuevo: para columna H cuando opcion = C
     };
 
     const stateBefore = readStateForLegajo(legajo);
 
-    // Bloqueo: no permitir C sin matriz (igual sigue)
+    // ✅ Cajón: Hs Inicio + Matriz a Col H
     if (payload.opcion === "C") {
       if (!stateBefore.lastMatrix || !stateBefore.lastMatrix.ts) {
         alert('Primero tenés que enviar "E (Empecé Matriz)" antes de registrar un Cajón.');
         return;
       }
       payload["Hs Inicio"] = computeHsInicioForC(stateBefore);
+      payload.matriz = String(stateBefore.lastMatrix.texto || "").trim();
+    }
+
+    // ✅ RM y RD: Hs Inicio = su propia hora (tsEvent)
+    if (payload.opcion === "RM" || payload.opcion === "RD") {
+      payload["Hs Inicio"] = tsEvent;
     }
 
     const v = validateBeforeSend(legajo, payload);
@@ -497,5 +504,5 @@ document.addEventListener("DOMContentLoaded", () => {
   renderOptions();
   renderSummary();
 
-  console.log("app.js OK ✅ (bloquea E y C si hay TM pendiente)");
+  console.log("app.js OK ✅ (RM/RD con Hs Inicio, C manda Matriz a col H)");
 });
