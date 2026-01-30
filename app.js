@@ -312,12 +312,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return "";
   }
 
-  /* ================= VALIDACIÓN TM =================
-     Si hay TM pendiente:
-       - Perm / RM / RD permitidos
-       - El MISMO TM permitido (para cerrarlo)
-       - TODO lo demás bloqueado (incluye E y C)
-  =================================================== */
+  /* ================= VALIDACIÓN TM ================= */
   function validateBeforeSend(legajo, payload) {
     const s = readStateForLegajo(legajo);
     const ld = s.lastDowntime;
@@ -364,17 +359,15 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // Perm / RM / RD limpian TM pendiente
     if (payload.opcion === "Perm" || payload.opcion === "RM" || payload.opcion === "RD") {
       s.lastDowntime = null;
       writeStateForLegajo(legajo, s);
       return;
     }
 
-    // Tiempo muerto
     if (isDowntime(payload.opcion)) {
       if (!s.lastDowntime) s.lastDowntime = item;
-      else if (sameDowntime(s.lastDowntime, payload)) s.lastDowntime = null; // 2da vez mismo TM => limpia
+      else if (sameDowntime(s.lastDowntime, payload)) s.lastDowntime = null;
       else s.lastDowntime = item;
       writeStateForLegajo(legajo, s);
       return;
@@ -428,6 +421,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const tsEvent = isoNowSeconds();
+    const stateBefore = readStateForLegajo(legajo);
 
     const payload = {
       legajo,
@@ -436,19 +430,21 @@ document.addEventListener("DOMContentLoaded", () => {
       texto,
       tsEvent,
       "Hs Inicio": "",
-      matriz: "" // ✅ nuevo: para columna H cuando opcion = C
+      matriz: ""
     };
 
-    const stateBefore = readStateForLegajo(legajo);
-
-    // ✅ Cajón: Hs Inicio + Matriz a Col H
-    if (payload.opcion === "C") {
-      if (!stateBefore.lastMatrix || !stateBefore.lastMatrix.ts) {
-        alert('Primero tenés que enviar "E (Empecé Matriz)" antes de registrar un Cajón.');
+    // ✅ C / RM / RD requieren matriz registrada, y mandan matriz a Col H
+    if (payload.opcion === "C" || payload.opcion === "RM" || payload.opcion === "RD") {
+      if (!stateBefore.lastMatrix || !stateBefore.lastMatrix.ts || !stateBefore.lastMatrix.texto) {
+        alert('Primero tenés que enviar "E (Empecé Matriz)" para registrar una matriz.');
         return;
       }
-      payload["Hs Inicio"] = computeHsInicioForC(stateBefore);
       payload.matriz = String(stateBefore.lastMatrix.texto || "").trim();
+    }
+
+    // ✅ Cajón: Hs Inicio según regla (último cajón o última matriz)
+    if (payload.opcion === "C") {
+      payload["Hs Inicio"] = computeHsInicioForC(stateBefore);
     }
 
     // ✅ RM y RD: Hs Inicio = su propia hora (tsEvent)
@@ -504,5 +500,5 @@ document.addEventListener("DOMContentLoaded", () => {
   renderOptions();
   renderSummary();
 
-  console.log("app.js OK ✅ (RM/RD con Hs Inicio, C manda Matriz a col H)");
+  console.log("app.js OK ✅ (RM/RD mandan matriz + Hs Inicio propio)");
 });
