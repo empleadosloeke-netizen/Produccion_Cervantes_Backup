@@ -359,7 +359,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    if (payload.opcion === "Perm" || payload.opcion === "RM" || payload.opcion === "RD") {
+    if (payload.opcion === "RM" || payload.opcion === "RD") {
       s.lastDowntime = null;
       writeStateForLegajo(legajo, s);
       return;
