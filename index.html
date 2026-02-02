@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Registro Producción</title>
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- opcional: evita el 404 del favicon -->
+  <link rel="icon" href="data:,">
 </head>
 
 <body>
@@ -45,17 +48,15 @@
         <div id="inputLabel" class="label"></div>
         <input id="textInput" class="text-input">
       </div>
-      
+
       <!-- INFO MATRIZ (solo para Cajón) -->
       <div id="matrizInfo" class="matriz-info hidden"></div>
-      
+
       <button id="btnEnviar" class="primary-btn">Enviar</button>
       <div id="error" class="error"></div>
     </div>
   </div>
 
-  <!-- ✅ CIERRE CORRECTO -->
   <script src="app.js"></script>
 </body>
 </html>
-
