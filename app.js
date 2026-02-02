@@ -38,6 +38,25 @@ document.addEventListener("DOMContentLoaded", () => {
     return new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
   }
 
+  function todayISODateAR() {
+    // YYYY-MM-DD en horario AR (estable)
+    return new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+  }
+
+  function nowMinutesAR() {
+    // minutos desde 00:00 en horario AR
+    const parts = new Intl.DateTimeFormat("es-AR", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(new Date());
+
+    const hh = Number(parts.find(p => p.type === "hour")?.value || 0);
+    const mm = Number(parts.find(p => p.type === "minute")?.value || 0);
+    return hh * 60 + mm;
+  }
+
   /* ================= UUID ================= */
   function uuidv4() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -109,8 +128,9 @@ document.addEventListener("DOMContentLoaded", () => {
     {code:"RD",desc:"Rollo Fleje Doblado",row:3,input:{show:false}}
   ];
 
-  // ✅ NO son tiempos muertos (pero Perm se trata como TM doble envío)
-  const NON_DOWNTIME_CODES = new Set(["E","C","RM","RD"]);
+  // ✅ NO son tiempos muertos (Perm se trata como TM doble envío)
+  // ✅ LLgdaTarde NO es TM y NO debe bloquear
+  const NON_DOWNTIME_CODES = new Set(["E","C","RM","RD","LLgdaTarde"]);
   const isDowntime = (op) => !NON_DOWNTIME_CODES.has(op);
 
   const sameDowntime = (a,b) =>
@@ -133,7 +153,13 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function freshState() {
-    return { lastMatrix:null, lastCajon:null, lastDowntime:null, last2:[] };
+    return {
+      lastMatrix:null,
+      lastCajon:null,
+      lastDowntime:null,
+      last2:[],
+      lateArrivalSent:false // ✅ NUEVO
+    };
   }
 
   function readStateForLegajo(legajo) {
@@ -146,6 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
       s.lastMatrix = s.lastMatrix || null;
       s.lastCajon = s.lastCajon || null;
       s.lastDowntime = s.lastDowntime || null;
+      s.lateArrivalSent = !!s.lateArrivalSent;
       return s;
     } catch {
       return freshState();
@@ -174,12 +201,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const q = readQueue();
     q.push({ ...payload, __tries: 0 });
     writeQueue(q);
-  }
-  function dequeueOne() {
-    const q = readQueue();
-    const item = q.shift();
-    writeQueue(q);
-    return item;
   }
   function queueLength() {
     return readQueue().length;
@@ -260,11 +281,7 @@ document.addEventListener("DOMContentLoaded", () => {
        <small>Última matriz: ${lm.ts ? formatDateTimeAR(lm.ts) : ""}</small>`;
   }
 
-  /* ================= NUEVO: BLOQUEO UI POR TM PENDIENTE =================
-     Si hay lastDowntime:
-       - sólo habilita: mismo TM (por code) + RM + RD
-       - deshabilita el resto y deja preseleccionado ese TM
-  ====================================================================== */
+  /* ================= BLOQUEO UI POR TM PENDIENTE ================= */
   function getPendingDowntime() {
     const leg = legajoKey();
     if (!leg) return null;
@@ -275,7 +292,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function isAllowedWhenPending(optCode, pending) {
     if (!pending) return true;
     if (optCode === "RM" || optCode === "RD") return true;
-    // solo el mismo tiempo muerto para cerrarlo
     return String(optCode) === String(pending.opcion);
   }
 
@@ -291,7 +307,6 @@ document.addEventListener("DOMContentLoaded", () => {
     el.style.filter = "grayscale(100%)";
   }
 
-  /* ================= RENDER OPCIONES ================= */
   function renderOptions() {
     row1.innerHTML=""; row2.innerHTML=""; row3.innerHTML="";
     const pending = getPendingDowntime();
@@ -312,23 +327,18 @@ document.addEventListener("DOMContentLoaded", () => {
       (o.row===1?row1:o.row===2?row2:row3).appendChild(d);
     });
 
-    // Si hay TM pendiente, mostramos hint (sin molestar con alert)
     if (pending) {
-      // si no hay nada seleccionado, dejamos seleccionado el TM pendiente
       const opt = OPTIONS.find(x => x.code === pending.opcion);
       if (opt) {
         selectOption(opt);
-        // bloquea el reset para que no se escape de la selección del TM pendiente
         btnResetSelection.style.opacity = "0.4";
         btnResetSelection.style.pointerEvents = "none";
-        // aclaración visual en el panel seleccionado
         error.style.color = "#b26a00";
         error.innerText =
           `⚠️ Hay un Tiempo Muerto pendiente (${pending.opcion}). ` +
           `Solo podés reenviar el mismo para cerrarlo, o enviar RM/RD.`;
       }
     } else {
-      // si no hay TM pendiente, habilitamos reset
       btnResetSelection.style.opacity = "";
       btnResetSelection.style.pointerEvents = "";
       error.style.color = "";
@@ -342,7 +352,6 @@ document.addEventListener("DOMContentLoaded", () => {
     legajoScreen.classList.add("hidden");
     optionsScreen.classList.remove("hidden");
 
-    // Renderiza y aplica bloqueo/preselección si corresponde
     renderOptions();
     renderMatrizInfoForCajon();
   }
@@ -360,7 +369,6 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedBox.innerText = opt.code;
     selectedDesc.innerText = opt.desc;
 
-    // Si hay TM pendiente, el mensaje queda; si no, se limpia
     const pending = getPendingDowntime();
     if (!pending) error.innerText = "";
     textInput.value = "";
@@ -369,12 +377,9 @@ document.addEventListener("DOMContentLoaded", () => {
       inputArea.classList.remove("hidden");
       inputLabel.innerText = opt.input.label;
       textInput.placeholder = opt.input.placeholder;
-
-      // si hubiera TM pendiente con texto y coincide, precarga (por si en el futuro TM usa input)
       if (pending && pending.opcion === opt.code && pending.texto) {
         textInput.value = String(pending.texto || "");
       }
-
     } else {
       inputArea.classList.add("hidden");
       textInput.placeholder = "";
@@ -384,10 +389,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function resetSelection() {
-    // si hay TM pendiente, NO se permite reset (queda preseleccionado)
     const pending = getPendingDowntime();
     if (pending) return;
-
     selected = null;
     selectedArea.classList.add("hidden");
     error.innerText = "";
@@ -410,12 +413,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!ld) return { ok:true };
 
-    // RM/RD permitidos aún con TM pendiente
     if (payload.opcion === "RM" || payload.opcion === "RD") {
       return { ok:true };
     }
 
-    // si no es el mismo TM => bloquea (incluye Perm)
     if (!sameDowntime(ld, payload)) {
       return {
         ok:false,
@@ -424,46 +425,55 @@ document.addEventListener("DOMContentLoaded", () => {
       };
     }
 
-    // mismo TM por 2da vez
     return { ok:true, isSecondSameDowntime:true, downtimeTs: ld.ts || "" };
   }
 
   /* ================= ACTUALIZAR ESTADO ================= */
-  function updateStateAfterSend(legajo, payload) {
-    const s = readStateForLegajo(legajo);
+  function pushLast2(s, payload) {
     const item = { opcion:payload.opcion, descripcion:payload.descripcion, texto:payload.texto||"", ts:payload.tsEvent };
-
     s.last2.unshift(item);
     s.last2 = s.last2.slice(0,2);
+  }
+
+  function updateStateAfterSend(legajo, payload) {
+    const s = readStateForLegajo(legajo);
+
+    // ✅ LLgdaTarde: solo historial last2, no toca TM/matriz/cajon
+    if (payload.opcion === "LLgdaTarde") {
+      pushLast2(s, payload);
+      writeStateForLegajo(legajo, s);
+      return;
+    }
+
+    pushLast2(s, payload);
 
     if (payload.opcion === "E") {
-      if (s.lastMatrix && String(s.lastMatrix.texto||"") !== String(item.texto||"")) {
+      if (s.lastMatrix && String(s.lastMatrix.texto||"") !== String(payload.texto||"")) {
         s.lastCajon = null;
       }
-      s.lastMatrix = item;
+      s.lastMatrix = { opcion:payload.opcion, descripcion:payload.descripcion, texto:payload.texto||"", ts:payload.tsEvent };
       s.lastDowntime = null;
       writeStateForLegajo(legajo, s);
       return;
     }
 
     if (payload.opcion === "C") {
-      s.lastCajon = item;
+      s.lastCajon = { opcion:payload.opcion, descripcion:payload.descripcion, texto:payload.texto||"", ts:payload.tsEvent };
       s.lastDowntime = null;
       writeStateForLegajo(legajo, s);
       return;
     }
 
-    // RM/RD limpian TM pendiente
     if (payload.opcion === "RM" || payload.opcion === "RD") {
       s.lastDowntime = null;
       writeStateForLegajo(legajo, s);
       return;
     }
 
-    // Tiempo muerto: requiere doble envío
     if (isDowntime(payload.opcion)) {
+      const item = { opcion:payload.opcion, descripcion:payload.descripcion, texto:payload.texto||"", ts:payload.tsEvent };
       if (!s.lastDowntime) s.lastDowntime = item;
-      else if (sameDowntime(s.lastDowntime, payload)) s.lastDowntime = null; // 2da vez mismo TM => limpia
+      else if (sameDowntime(s.lastDowntime, payload)) s.lastDowntime = null;
       else s.lastDowntime = item;
       writeStateForLegajo(legajo, s);
       return;
@@ -524,11 +534,59 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  /* ================= NUEVO: LLEGADA TARDE =================
+     Si 1er mensaje del día y hora AR > 08:30:
+       - envía un registro LLgdaTarde con Hs Inicio 08:30:00
+  ========================================================= */
+  function maybeSendLateArrival(legajo) {
+    const s = readStateForLegajo(legajo);
+
+    // "primer mensaje del día" => no tiene historial todavía
+    const isFirstMessage = (!s.last2 || s.last2.length === 0)
+      && !s.lastMatrix && !s.lastCajon && !s.lastDowntime;
+
+    if (!isFirstMessage) return false;
+    if (s.lateArrivalSent) return false;
+
+    const nowMin = nowMinutesAR();
+    const limitMin = 8 * 60 + 30; // 08:30
+
+    if (nowMin <= limitMin) return false;
+
+    const day = todayISODateAR(); // YYYY-MM-DD
+    const hsInicioISO = `${day}T08:30:00-03:00`;
+
+    const tsEvent = isoNowSeconds();
+    const latePayload = {
+      id: uuidv4(),
+      legajo,
+      opcion: "LLgdaTarde",
+      descripcion: "Llegada Tarde",
+      texto: "",
+      tsEvent,
+      "Hs Inicio": hsInicioISO,
+      matriz: ""
+    };
+
+    // marcamos para no duplicar (aunque quede en cola)
+    s.lateArrivalSent = true;
+    writeStateForLegajo(legajo, s);
+
+    // lo agregamos a cola + estado (sin tocar TM)
+    updateStateAfterSend(legajo, latePayload);
+    enqueue(latePayload);
+
+    return true;
+  }
+
   async function sendFast() {
     if (!selected) return;
 
     const legajo = legajoKey();
     if (!legajo) { alert("Ingresá el número de legajo"); return; }
+
+    // ✅ si corresponde, encola "Llegada Tarde" ANTES del primer reporte
+    maybeSendLateArrival(legajo);
 
     const texto = String(textInput.value || "").trim();
     if (selected.input.show && !selected.input.validate.test(texto)) {
@@ -551,7 +609,6 @@ document.addEventListener("DOMContentLoaded", () => {
       matriz: ""
     };
 
-    // ✅ C / RM / RD requieren matriz registrada
     if (payload.opcion === "C" || payload.opcion === "RM" || payload.opcion === "RD") {
       if (!stateBefore.lastMatrix || !stateBefore.lastMatrix.ts || !stateBefore.lastMatrix.texto) {
         alert('Primero tenés que enviar "E (Empecé Matriz)" para registrar una matriz.');
@@ -560,12 +617,10 @@ document.addEventListener("DOMContentLoaded", () => {
       payload.matriz = String(stateBefore.lastMatrix.texto || "").trim();
     }
 
-    // ✅ Cajón: Hs Inicio según regla
     if (payload.opcion === "C") {
       payload["Hs Inicio"] = computeHsInicioForC(stateBefore);
     }
 
-    // ✅ RM y RD: Hs Inicio = su propia hora
     if (payload.opcion === "RM" || payload.opcion === "RD") {
       payload["Hs Inicio"] = tsEvent;
     }
@@ -573,7 +628,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const v = validateBeforeSend(legajo, payload);
     if (!v.ok) { alert(v.msg); return; }
 
-    // ✅ 2da vez mismo TM: Hs Inicio = ts del TM pendiente
     if (v.isSecondSameDowntime) {
       payload["Hs Inicio"] = v.downtimeTs || "";
     }
@@ -625,6 +679,6 @@ document.addEventListener("DOMContentLoaded", () => {
   renderOptions();
   renderSummary();
 
-  console.log("app.js OK ✅ (cola+reintentos+UUID dedupe + bloqueo UI TM + preselect)");
+  console.log("app.js OK ✅ (TM bloqueo+preselect + llegada tarde automática)");
 
 });
