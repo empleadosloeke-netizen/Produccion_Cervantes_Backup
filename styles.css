@@ -85,15 +85,7 @@ button{
   font-size:13px;
   color:#333;
 }
-.badge-warn{
-  display:inline-block;
-  padding:2px 8px;
-  border-radius:999px;
-  font-size:12px;
-  border:1px solid #f3c27a;
-  background:#fff7e6;
-  margin-left:6px;
-}
+
 .matriz-info{
   margin-top:12px;
   padding:10px;
@@ -111,13 +103,3 @@ button{
   font-weight:normal;
   color:#444;
 }
-.badge-info{
-  display:inline-block;
-  padding:2px 8px;
-  border-radius:999px;
-  font-size:12px;
-  border:1px solid #cfe0ff;
-  background:#eef4ff;
-  margin-left:6px;
-}
-/* =========================================================== */
