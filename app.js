@@ -1,7 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
 
   const GOOGLE_SHEET_WEBAPP_URL =
-    "https://script.google.com/macros/s/AKfycbxl6ajzrBE0TkBmDduuMZxTiogf5KvTi0Ex-vhObhLeYZ8F_qS1ZyK6Wl4EYXavmm4L/exec";
+    "https://script.google.com/macros/s/AKfycbw3uhNP6Mp9UGZTUsjs8KDhgQmSw6crBBBpq6wd79d_FTtIjSmbzE9XNJaIyUmr3lY/exec";
 
   /* ================= LIMPIEZA (1 vez) ================= */
   const MIGRATION_FLAG = "prod_migrated_v1";
@@ -38,12 +38,9 @@ document.addEventListener("DOMContentLoaded", () => {
     return new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
   }
 
-  /* ================= UUID (ID ÚNICO) ================= */
+  /* ================= UUID ================= */
   function uuidv4() {
-    // crypto.randomUUID() en navegadores modernos
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-
-    // fallback (v4)
     const bytes = new Uint8Array(16);
     (window.crypto || window.msCrypto).getRandomValues(bytes);
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
@@ -112,7 +109,7 @@ document.addEventListener("DOMContentLoaded", () => {
     {code:"RD",desc:"Rollo Fleje Doblado",row:3,input:{show:false}}
   ];
 
-  // ✅ NO son tiempos muertos (pero OJO: Perm ahora SÍ se trata como TM "doble envío")
+  // ✅ NO son tiempos muertos (pero Perm se trata como TM doble envío)
   const NON_DOWNTIME_CODES = new Set(["E","C","RM","RD"]);
   const isDowntime = (op) => !NON_DOWNTIME_CODES.has(op);
 
@@ -159,9 +156,7 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem(stateKeyFor(legajo), JSON.stringify(state));
   }
 
-  /* ================= COLA PENDIENTES (con reintentos) =================
-     Guardamos: { ...payload, __tries: number }
-  ====================================================================== */
+  /* ================= COLA PENDIENTES ================= */
   function readQueue() {
     try {
       const raw = localStorage.getItem(LS_QUEUE);
@@ -172,18 +167,20 @@ document.addEventListener("DOMContentLoaded", () => {
       return [];
     }
   }
-
   function writeQueue(arr) {
-    // mantenemos máximo 80 para que no crezca infinito
     localStorage.setItem(LS_QUEUE, JSON.stringify(arr.slice(-80)));
   }
-
   function enqueue(payload) {
     const q = readQueue();
     q.push({ ...payload, __tries: 0 });
     writeQueue(q);
   }
-
+  function dequeueOne() {
+    const q = readQueue();
+    const item = q.shift();
+    writeQueue(q);
+    return item;
+  }
   function queueLength() {
     return readQueue().length;
   }
@@ -263,16 +260,80 @@ document.addEventListener("DOMContentLoaded", () => {
        <small>Última matriz: ${lm.ts ? formatDateTimeAR(lm.ts) : ""}</small>`;
   }
 
+  /* ================= NUEVO: BLOQUEO UI POR TM PENDIENTE =================
+     Si hay lastDowntime:
+       - sólo habilita: mismo TM (por code) + RM + RD
+       - deshabilita el resto y deja preseleccionado ese TM
+  ====================================================================== */
+  function getPendingDowntime() {
+    const leg = legajoKey();
+    if (!leg) return null;
+    const s = readStateForLegajo(leg);
+    return s.lastDowntime || null;
+  }
+
+  function isAllowedWhenPending(optCode, pending) {
+    if (!pending) return true;
+    if (optCode === "RM" || optCode === "RD") return true;
+    // solo el mismo tiempo muerto para cerrarlo
+    return String(optCode) === String(pending.opcion);
+  }
+
+  function applyDisabledStyle(el, disabled) {
+    if (!disabled) {
+      el.style.opacity = "";
+      el.style.pointerEvents = "";
+      el.style.filter = "";
+      return;
+    }
+    el.style.opacity = "0.35";
+    el.style.pointerEvents = "none";
+    el.style.filter = "grayscale(100%)";
+  }
+
   /* ================= RENDER OPCIONES ================= */
   function renderOptions() {
     row1.innerHTML=""; row2.innerHTML=""; row3.innerHTML="";
+    const pending = getPendingDowntime();
+
     OPTIONS.forEach(o=>{
       const d=document.createElement("div");
       d.className="box";
       d.innerHTML=`<div class="box-title">${o.code}</div><div class="box-desc">${o.desc}</div>`;
-      d.addEventListener("click",()=>selectOption(o));
+
+      const allowed = isAllowedWhenPending(o.code, pending);
+
+      if (!allowed) {
+        applyDisabledStyle(d, true);
+      } else {
+        d.addEventListener("click",()=>selectOption(o));
+      }
+
       (o.row===1?row1:o.row===2?row2:row3).appendChild(d);
     });
+
+    // Si hay TM pendiente, mostramos hint (sin molestar con alert)
+    if (pending) {
+      // si no hay nada seleccionado, dejamos seleccionado el TM pendiente
+      const opt = OPTIONS.find(x => x.code === pending.opcion);
+      if (opt) {
+        selectOption(opt);
+        // bloquea el reset para que no se escape de la selección del TM pendiente
+        btnResetSelection.style.opacity = "0.4";
+        btnResetSelection.style.pointerEvents = "none";
+        // aclaración visual en el panel seleccionado
+        error.style.color = "#b26a00";
+        error.innerText =
+          `⚠️ Hay un Tiempo Muerto pendiente (${pending.opcion}). ` +
+          `Solo podés reenviar el mismo para cerrarlo, o enviar RM/RD.`;
+      }
+    } else {
+      // si no hay TM pendiente, habilitamos reset
+      btnResetSelection.style.opacity = "";
+      btnResetSelection.style.pointerEvents = "";
+      error.style.color = "";
+      if (!selected) error.innerText = "";
+    }
   }
 
   /* ================= NAVEGACIÓN ================= */
@@ -280,6 +341,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!legajoKey()) { alert("Ingresá el número de legajo"); return; }
     legajoScreen.classList.add("hidden");
     optionsScreen.classList.remove("hidden");
+
+    // Renderiza y aplica bloqueo/preselección si corresponde
+    renderOptions();
     renderMatrizInfoForCajon();
   }
 
@@ -295,13 +359,22 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedArea.classList.remove("hidden");
     selectedBox.innerText = opt.code;
     selectedDesc.innerText = opt.desc;
-    error.innerText = "";
+
+    // Si hay TM pendiente, el mensaje queda; si no, se limpia
+    const pending = getPendingDowntime();
+    if (!pending) error.innerText = "";
     textInput.value = "";
 
     if (opt.input.show) {
       inputArea.classList.remove("hidden");
       inputLabel.innerText = opt.input.label;
       textInput.placeholder = opt.input.placeholder;
+
+      // si hubiera TM pendiente con texto y coincide, precarga (por si en el futuro TM usa input)
+      if (pending && pending.opcion === opt.code && pending.texto) {
+        textInput.value = String(pending.texto || "");
+      }
+
     } else {
       inputArea.classList.add("hidden");
       textInput.placeholder = "";
@@ -311,6 +384,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function resetSelection() {
+    // si hay TM pendiente, NO se permite reset (queda preseleccionado)
+    const pending = getPendingDowntime();
+    if (pending) return;
+
     selected = null;
     selectedArea.classList.add("hidden");
     error.innerText = "";
@@ -326,12 +403,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return "";
   }
 
-  /* ================= VALIDACIÓN TM =================
-     Si hay TM pendiente:
-       - SOLO se permite enviar el MISMO TM para cerrarlo
-       - RM/RD se permiten (siempre), pero Perm NO
-       - todo lo demás se bloquea (incluye E/C/Perm)
-  =================================================== */
+  /* ================= VALIDACIÓN TM ================= */
   function validateBeforeSend(legajo, payload) {
     const s = readStateForLegajo(legajo);
     const ld = s.lastDowntime;
@@ -382,11 +454,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // RM/RD limpian TM pendiente
-    if (payload.opcion === "RM" || payload.opion === "RD") {
-      s.lastDowntime = null;
-      writeStateForLegajo(legajo, s);
-      return;
-    }
     if (payload.opcion === "RM" || payload.opcion === "RD") {
       s.lastDowntime = null;
       writeStateForLegajo(legajo, s);
@@ -406,23 +473,18 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /* ================= ENVÍO ================= */
-
   async function postToSheet(payload) {
-    // Sin headers + no-cors => máxima compatibilidad
     return fetch(GOOGLE_SHEET_WEBAPP_URL, {
-      method: "POST",
+      method:"POST",
       body: JSON.stringify(payload),
-      mode: "no-cors",
-      keepalive: true,
-      cache: "no-store",
+      mode:"no-cors",
+      keepalive:true,
+      cache:"no-store",
     });
   }
 
   let isFlushing = false;
-
-  function sleep(ms) {
-    return new Promise(r => setTimeout(r, ms));
-  }
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
   async function flushQueueOnce() {
     if (isFlushing) return;
@@ -432,42 +494,30 @@ document.addEventListener("DOMContentLoaded", () => {
       let q = readQueue();
       if (!q.length) return;
 
-      // Procesamos hasta 3 items por foco para no trabar UI
       const batchMax = 3;
 
-      for (let processed = 0; processed < batchMax; processed++) {
+      for (let processed=0; processed<batchMax; processed++) {
         q = readQueue();
         if (!q.length) break;
 
         const item = q[0];
         const tries = Number(item.__tries || 0);
-
-        // Si ya intentó mucho, lo dejamos pero no spameamos
-        if (tries >= 8) {
-          break;
-        }
+        if (tries >= 8) break;
 
         try {
           await postToSheet(item);
-
-          // Como no podemos confirmar, asumimos éxito si no tiró excepción
-          // y eliminamos de cola. Anti-duplicado lo hace el Sheet por ID.
           q.shift();
           writeQueue(q);
-
-          await sleep(120); // micro pausa
-        } catch (e) {
-          // aumenta tries + backoff suave
+          await sleep(120);
+        } catch {
           item.__tries = tries + 1;
           q[0] = item;
           writeQueue(q);
-
           const backoff = Math.min(1500 * item.__tries, 12000);
           await sleep(backoff);
-          break; // cortamos para no bloquear
+          break;
         }
       }
-
     } finally {
       isFlushing = false;
       renderSummary();
@@ -482,6 +532,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const texto = String(textInput.value || "").trim();
     if (selected.input.show && !selected.input.validate.test(texto)) {
+      error.style.color = "red";
       error.innerText = "Solo se permiten números";
       return;
     }
@@ -490,7 +541,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const stateBefore = readStateForLegajo(legajo);
 
     const payload = {
-      id: uuidv4(), // ✅ ID único para dedupe
+      id: uuidv4(),
       legajo,
       opcion: selected.code,
       descripcion: selected.desc,
@@ -500,7 +551,7 @@ document.addEventListener("DOMContentLoaded", () => {
       matriz: ""
     };
 
-    // ✅ C / RM / RD requieren matriz registrada, y mandan matriz
+    // ✅ C / RM / RD requieren matriz registrada
     if (payload.opcion === "C" || payload.opcion === "RM" || payload.opcion === "RD") {
       if (!stateBefore.lastMatrix || !stateBefore.lastMatrix.ts || !stateBefore.lastMatrix.texto) {
         alert('Primero tenés que enviar "E (Empecé Matriz)" para registrar una matriz.');
@@ -509,12 +560,12 @@ document.addEventListener("DOMContentLoaded", () => {
       payload.matriz = String(stateBefore.lastMatrix.texto || "").trim();
     }
 
-    // ✅ Cajón: Hs Inicio según regla (último cajón o última matriz)
+    // ✅ Cajón: Hs Inicio según regla
     if (payload.opcion === "C") {
       payload["Hs Inicio"] = computeHsInicioForC(stateBefore);
     }
 
-    // ✅ RM y RD: Hs Inicio = su propia hora (tsEvent)
+    // ✅ RM y RD: Hs Inicio = su propia hora
     if (payload.opcion === "RM" || payload.opcion === "RD") {
       payload["Hs Inicio"] = tsEvent;
     }
@@ -534,9 +585,14 @@ document.addEventListener("DOMContentLoaded", () => {
     updateStateAfterSend(legajo, payload);
     renderSummary();
 
-    resetSelection();
+    // volver a pantalla inicial
+    selected = null;
+    selectedArea.classList.add("hidden");
     optionsScreen.classList.add("hidden");
     legajoScreen.classList.remove("hidden");
+    matrizInfo.classList.add("hidden");
+    matrizInfo.innerHTML = "";
+    error.innerText = "";
 
     enqueue(payload);
     flushQueueOnce();
@@ -562,7 +618,6 @@ document.addEventListener("DOMContentLoaded", () => {
     legajoTimer = setTimeout(renderSummary, 120);
   });
 
-  // flush con foco + cada 25s (por si el usuario no cambia de pestaña)
   window.addEventListener("focus", () => flushQueueOnce());
   setInterval(() => flushQueueOnce(), 25000);
 
@@ -570,6 +625,6 @@ document.addEventListener("DOMContentLoaded", () => {
   renderOptions();
   renderSummary();
 
-  console.log("app.js OK ✅ (cola+reintentos+UUID dedupe)");
+  console.log("app.js OK ✅ (cola+reintentos+UUID dedupe + bloqueo UI TM + preselect)");
 
 });
