@@ -38,6 +38,20 @@ document.addEventListener("DOMContentLoaded", () => {
     return new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
   }
 
+  /* ================= UUID (ID ÚNICO) ================= */
+  function uuidv4() {
+    // crypto.randomUUID() en navegadores modernos
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+
+    // fallback (v4)
+    const bytes = new Uint8Array(16);
+    (window.crypto || window.msCrypto).getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+  }
+
   /* ================= ELEMENTOS ================= */
   const $ = (id) => document.getElementById(id);
 
@@ -145,7 +159,9 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem(stateKeyFor(legajo), JSON.stringify(state));
   }
 
-  /* ================= COLA PENDIENTES ================= */
+  /* ================= COLA PENDIENTES (con reintentos) =================
+     Guardamos: { ...payload, __tries: number }
+  ====================================================================== */
   function readQueue() {
     try {
       const raw = localStorage.getItem(LS_QUEUE);
@@ -156,20 +172,18 @@ document.addEventListener("DOMContentLoaded", () => {
       return [];
     }
   }
+
   function writeQueue(arr) {
-    localStorage.setItem(LS_QUEUE, JSON.stringify(arr.slice(-50)));
+    // mantenemos máximo 80 para que no crezca infinito
+    localStorage.setItem(LS_QUEUE, JSON.stringify(arr.slice(-80)));
   }
+
   function enqueue(payload) {
     const q = readQueue();
-    q.push(payload);
+    q.push({ ...payload, __tries: 0 });
     writeQueue(q);
   }
-  function dequeueOne() {
-    const q = readQueue();
-    const item = q.shift();
-    writeQueue(q);
-    return item;
-  }
+
   function queueLength() {
     return readQueue().length;
   }
@@ -368,6 +382,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // RM/RD limpian TM pendiente
+    if (payload.opcion === "RM" || payload.opion === "RD") {
+      s.lastDowntime = null;
+      writeStateForLegajo(legajo, s);
+      return;
+    }
     if (payload.opcion === "RM" || payload.opcion === "RD") {
       s.lastDowntime = null;
       writeStateForLegajo(legajo, s);
@@ -387,31 +406,68 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /* ================= ENVÍO ================= */
+
   async function postToSheet(payload) {
+    // Sin headers + no-cors => máxima compatibilidad
     return fetch(GOOGLE_SHEET_WEBAPP_URL, {
-      method:"POST",
-      headers:{ "Content-Type":"text/plain;charset=utf-8" },
+      method: "POST",
       body: JSON.stringify(payload),
-      mode:"no-cors",
-      keepalive:true
+      mode: "no-cors",
+      keepalive: true,
+      cache: "no-store",
     });
   }
 
   let isFlushing = false;
+
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
 
   async function flushQueueOnce() {
     if (isFlushing) return;
     isFlushing = true;
 
     try {
-      const q = readQueue();
+      let q = readQueue();
       if (!q.length) return;
 
-      const item = q[0];
-      await postToSheet(item);
-      dequeueOne();
-    } catch {
-      // queda pendiente
+      // Procesamos hasta 3 items por foco para no trabar UI
+      const batchMax = 3;
+
+      for (let processed = 0; processed < batchMax; processed++) {
+        q = readQueue();
+        if (!q.length) break;
+
+        const item = q[0];
+        const tries = Number(item.__tries || 0);
+
+        // Si ya intentó mucho, lo dejamos pero no spameamos
+        if (tries >= 8) {
+          break;
+        }
+
+        try {
+          await postToSheet(item);
+
+          // Como no podemos confirmar, asumimos éxito si no tiró excepción
+          // y eliminamos de cola. Anti-duplicado lo hace el Sheet por ID.
+          q.shift();
+          writeQueue(q);
+
+          await sleep(120); // micro pausa
+        } catch (e) {
+          // aumenta tries + backoff suave
+          item.__tries = tries + 1;
+          q[0] = item;
+          writeQueue(q);
+
+          const backoff = Math.min(1500 * item.__tries, 12000);
+          await sleep(backoff);
+          break; // cortamos para no bloquear
+        }
+      }
+
     } finally {
       isFlushing = false;
       renderSummary();
@@ -434,6 +490,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const stateBefore = readStateForLegajo(legajo);
 
     const payload = {
+      id: uuidv4(), // ✅ ID único para dedupe
       legajo,
       opcion: selected.code,
       descripcion: selected.desc,
@@ -443,7 +500,7 @@ document.addEventListener("DOMContentLoaded", () => {
       matriz: ""
     };
 
-    // ✅ C / RM / RD requieren matriz registrada, y mandan matriz a Col H
+    // ✅ C / RM / RD requieren matriz registrada, y mandan matriz
     if (payload.opcion === "C" || payload.opcion === "RM" || payload.opcion === "RD") {
       if (!stateBefore.lastMatrix || !stateBefore.lastMatrix.ts || !stateBefore.lastMatrix.texto) {
         alert('Primero tenés que enviar "E (Empecé Matriz)" para registrar una matriz.');
@@ -495,6 +552,7 @@ document.addEventListener("DOMContentLoaded", () => {
   btnBackTop.addEventListener("click", backToLegajo);
   btnBackLabel.addEventListener("click", backToLegajo);
   btnResetSelection.addEventListener("click", resetSelection);
+
   btnEnviar.addEventListener("click", sendFast);
   legajoInput.addEventListener("keydown", (e)=>{ if(e.key==="Enter") goToOptions(); });
 
@@ -504,11 +562,14 @@ document.addEventListener("DOMContentLoaded", () => {
     legajoTimer = setTimeout(renderSummary, 120);
   });
 
+  // flush con foco + cada 25s (por si el usuario no cambia de pestaña)
   window.addEventListener("focus", () => flushQueueOnce());
+  setInterval(() => flushQueueOnce(), 25000);
 
   /* ================= INIT ================= */
   renderOptions();
   renderSummary();
 
-  console.log("app.js OK ✅ (Perm = TM doble envío, RM/RD permitidos, bloqueo por TM pendiente)");
+  console.log("app.js OK ✅ (cola+reintentos+UUID dedupe)");
+
 });
