@@ -1,7 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
 
   const GOOGLE_SHEET_WEBAPP_URL =
-    "https://script.google.com/macros/s/AKfycbw3uhNP6Mp9UGZTUsjs8KDhgQmSw6crBBBpq6wd79d_FTtIjSmbzE9XNJaIyUmr3lY/exec";
+    "https://script.google.com/macros/s/AKfycbxl6ajzrBE0TkBmDduuMZxTiogf5KvTi0Ex-vhObhLeYZ8F_qS1ZyK6Wl4EYXavmm4L/exec";
 
   /* ================= LIMPIEZA (1 vez) ================= */
   const MIGRATION_FLAG = "prod_migrated_v1";
