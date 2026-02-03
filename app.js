@@ -314,6 +314,7 @@ document.addEventListener("DOMContentLoaded", () => {
     OPTIONS.forEach(o=>{
       const d=document.createElement("div");
       d.className="box";
+      d.dataset.code = o.code; // ✅ para marcar seleccionado
       d.innerHTML=`<div class="box-title">${o.code}</div><div class="box-desc">${o.desc}</div>`;
 
       const allowed = isAllowedWhenPending(o.code, pending);
@@ -321,7 +322,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!allowed) {
         applyDisabledStyle(d, true);
       } else {
-        d.addEventListener("click",()=>selectOption(o));
+        d.addEventListener("click",()=>selectOption(o, d)); // ✅ pasamos el elemento
       }
 
       (o.row===1?row1:o.row===2?row2:row3).appendChild(d);
@@ -330,7 +331,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (pending) {
       const opt = OPTIONS.find(x => x.code === pending.opcion);
       if (opt) {
-        selectOption(opt);
+        const el = document.querySelector(`.box[data-code="${opt.code}"]`);
+        selectOption(opt, el); // ✅ preselección + verde
         btnResetSelection.style.opacity = "0.4";
         btnResetSelection.style.pointerEvents = "none";
         error.style.color = "#b26a00";
@@ -363,8 +365,17 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /* ================= SELECCIÓN ================= */
-  function selectOption(opt) {
+  function selectOption(opt, elBox) {
     selected = opt;
+
+    // ✅ marcar seleccionado en verde
+    document.querySelectorAll(".box.selected").forEach(x => x.classList.remove("selected"));
+    if (elBox) elBox.classList.add("selected");
+    else {
+      const found = document.querySelector(`.box[data-code="${opt.code}"]`);
+      if (found) found.classList.add("selected");
+    }
+
     selectedArea.classList.remove("hidden");
     selectedBox.innerText = opt.code;
     selectedDesc.innerText = opt.desc;
@@ -397,6 +408,9 @@ document.addEventListener("DOMContentLoaded", () => {
     textInput.value = "";
     matrizInfo.classList.add("hidden");
     matrizInfo.innerHTML = "";
+
+    // ✅ sacar highlight verde
+    document.querySelectorAll(".box.selected").forEach(x => x.classList.remove("selected"));
   }
 
   /* ================= REGLAS Hs Inicio ================= */
@@ -648,6 +662,9 @@ document.addEventListener("DOMContentLoaded", () => {
     matrizInfo.innerHTML = "";
     error.innerText = "";
 
+    // ✅ limpiar highlight si vuelvo atrás
+    document.querySelectorAll(".box.selected").forEach(x => x.classList.remove("selected"));
+
     enqueue(payload);
     flushQueueOnce();
 
@@ -679,6 +696,6 @@ document.addEventListener("DOMContentLoaded", () => {
   renderOptions();
   renderSummary();
 
-  console.log("app.js OK ✅ (TM bloqueo+preselect + llegada tarde automática)");
+  console.log("app.js OK ✅ (TM bloqueo+preselect + llegada tarde automática + seleccionado verde)");
 
 });
