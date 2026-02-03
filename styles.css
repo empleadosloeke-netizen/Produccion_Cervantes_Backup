@@ -103,3 +103,10 @@ button{
   font-weight:normal;
   color:#444;
 }
+/* ====== BOTÓN SELECCIONADO (verde) ====== */
+.box.selected{
+  border-color:#1aa34a !important;
+  background:#eafff1;
+  box-shadow:0 0 0 2px rgba(26,163,74,.25);
+}
+.box.selected .box-title{ color:#1aa34a; }
