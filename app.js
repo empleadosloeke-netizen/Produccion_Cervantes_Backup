@@ -3,22 +3,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const GOOGLE_SHEET_WEBAPP_URL =
     "https://script.google.com/macros/s/AKfycbw3uhNP6Mp9UGZTUsjs8KDhgQmSw6crBBBpq6wd79d_FTtIjSmbzE9XNJaIyUmr3lY/exec";
 
-  /* ================= LIMPIEZA (1 vez) ================= */
-  const MIGRATION_FLAG = "prod_migrated_v1";
-  if (!localStorage.getItem(MIGRATION_FLAG)) {
-    [
-      "prod_day_state_ls_v1",
-      "prod_send_queue_ls_v1",
-      "legajo_history_v1",
-      "prod_day_state_v7",
-      "prod_state_ls_v1",
-      "prod_queue_v1"
-    ].forEach(k => localStorage.removeItem(k));
-
-    localStorage.setItem(MIGRATION_FLAG, "1");
-  }
-  /* ==================================================== */
-
   /* ================= TIEMPO ================= */
   function isoNowSeconds() {
     const d = new Date();
@@ -56,6 +40,64 @@ document.addEventListener("DOMContentLoaded", () => {
     const mm = Number(parts.find(p => p.type === "minute")?.value || 0);
     return hh * 60 + mm;
   }
+
+  /* ================= KEYS (Cervantes) ================= */
+  const APP_TAG = "_Cervantes";
+  const VERSION = "_v1";
+
+  const MIGRATION_FLAG = `prod_migrated${APP_TAG}${VERSION}`;   // prod_migrated_Cervantes_v1
+  const LS_PREFIX      = `prod_state${APP_TAG}${VERSION}`;      // prod_state_Cervantes_v1
+  const LS_QUEUE       = `prod_queue${APP_TAG}${VERSION}`;      // prod_queue_Cervantes_v1
+  const DAY_GUARD_KEY  = `prod_day_guard${APP_TAG}${VERSION}`;  // prod_day_guard_Cervantes_v1
+
+  /* ================= RESET DIARIO (borrar todo al cambiar el día) ================= */
+  function clearAllCervantesData() {
+    // borrar todos los estados diarios por legajo
+    const statePrefix = `${LS_PREFIX}::`;
+
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+
+    keys.forEach(k => {
+      if (!k) return;
+
+      // borra cualquier estado prod_state_Cervantes_v1::...
+      if (k.startsWith(statePrefix)) localStorage.removeItem(k);
+    });
+
+    // borra cola
+    localStorage.removeItem(LS_QUEUE);
+
+    // (opcional) no hace falta borrar MIGRATION_FLAG; lo dejamos para no re-correr migración
+    // localStorage.removeItem(MIGRATION_FLAG);
+  }
+
+  const today = todayKeyAR(); // fecha en AR
+  const lastDay = localStorage.getItem(DAY_GUARD_KEY);
+  if (lastDay && lastDay !== today) {
+    clearAllCervantesData();
+  }
+  localStorage.setItem(DAY_GUARD_KEY, today);
+  /* ============================================================================== */
+
+  /* ================= LIMPIEZA (1 vez) ================= */
+  if (!localStorage.getItem(MIGRATION_FLAG)) {
+    // Limpieza de claves antiguas (incluye nombres viejos sin Cervantes)
+    [
+      "prod_day_state_ls_v1",
+      "prod_send_queue_ls_v1",
+      "legajo_history_v1",
+      "prod_day_state_v7",
+      "prod_state_ls_v1",
+      "prod_queue_v1",
+      // por si existiera alguna previa de Cervantes (reinstalación)
+      `prod_state${APP_TAG}${VERSION}`,
+      `prod_queue${APP_TAG}${VERSION}`,
+    ].forEach(k => localStorage.removeItem(k));
+
+    localStorage.setItem(MIGRATION_FLAG, "1");
+  }
+  /* ==================================================== */
 
   /* ================= UUID ================= */
   function uuidv4() {
@@ -141,14 +183,12 @@ document.addEventListener("DOMContentLoaded", () => {
   let selected = null;
 
   /* ================= STORAGE POR LEGAJO ================= */
-  const LS_PREFIX = "prod_state_v1";
-  const LS_QUEUE  = "prod_queue_v1";
-
   function legajoKey() {
     return String(legajoInput.value || "").trim();
   }
 
   function stateKeyFor(legajo) {
+    // prod_state_Cervantes_v1::DD/MM/YYYY::LEGAJO
     return `${LS_PREFIX}::${todayKeyAR()}::${String(legajo).trim()}`;
   }
 
@@ -158,7 +198,7 @@ document.addEventListener("DOMContentLoaded", () => {
       lastCajon:null,
       lastDowntime:null,
       last2:[],
-      lateArrivalSent:false // ✅ NUEVO
+      lateArrivalSent:false
     };
   }
 
@@ -314,7 +354,7 @@ document.addEventListener("DOMContentLoaded", () => {
     OPTIONS.forEach(o=>{
       const d=document.createElement("div");
       d.className="box";
-      d.dataset.code = o.code; // ✅ para marcar seleccionado
+      d.dataset.code = o.code;
       d.innerHTML=`<div class="box-title">${o.code}</div><div class="box-desc">${o.desc}</div>`;
 
       const allowed = isAllowedWhenPending(o.code, pending);
@@ -322,7 +362,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!allowed) {
         applyDisabledStyle(d, true);
       } else {
-        d.addEventListener("click",()=>selectOption(o, d)); // ✅ pasamos el elemento
+        d.addEventListener("click",()=>selectOption(o, d));
       }
 
       (o.row===1?row1:o.row===2?row2:row3).appendChild(d);
@@ -332,7 +372,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const opt = OPTIONS.find(x => x.code === pending.opcion);
       if (opt) {
         const el = document.querySelector(`.box[data-code="${opt.code}"]`);
-        selectOption(opt, el); // ✅ preselección + verde
+        selectOption(opt, el);
         btnResetSelection.style.opacity = "0.4";
         btnResetSelection.style.pointerEvents = "none";
         error.style.color = "#b26a00";
@@ -368,7 +408,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function selectOption(opt, elBox) {
     selected = opt;
 
-    // ✅ marcar seleccionado en verde
     document.querySelectorAll(".box.selected").forEach(x => x.classList.remove("selected"));
     if (elBox) elBox.classList.add("selected");
     else {
@@ -408,8 +447,6 @@ document.addEventListener("DOMContentLoaded", () => {
     textInput.value = "";
     matrizInfo.classList.add("hidden");
     matrizInfo.innerHTML = "";
-
-    // ✅ sacar highlight verde
     document.querySelectorAll(".box.selected").forEach(x => x.classList.remove("selected"));
   }
 
@@ -452,7 +489,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateStateAfterSend(legajo, payload) {
     const s = readStateForLegajo(legajo);
 
-    // ✅ LLgdaTarde: solo historial last2, no toca TM/matriz/cajon
     if (payload.opcion === "LLgdaTarde") {
       pushLast2(s, payload);
       writeStateForLegajo(legajo, s);
@@ -548,14 +584,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  /* ================= NUEVO: LLEGADA TARDE =================
-     Si 1er mensaje del día y hora AR > 08:30:
-       - envía un registro LLgdaTarde con Hs Inicio 08:30:00
-  ========================================================= */
+  /* ================= LLEGADA TARDE ================= */
   function maybeSendLateArrival(legajo) {
     const s = readStateForLegajo(legajo);
 
-    // "primer mensaje del día" => no tiene historial todavía
     const isFirstMessage = (!s.last2 || s.last2.length === 0)
       && !s.lastMatrix && !s.lastCajon && !s.lastDowntime;
 
@@ -563,11 +595,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (s.lateArrivalSent) return false;
 
     const nowMin = nowMinutesAR();
-    const limitMin = 8 * 60 + 30; // 08:30
+    const limitMin = 8 * 60 + 30;
 
     if (nowMin <= limitMin) return false;
 
-    const day = todayISODateAR(); // YYYY-MM-DD
+    const day = todayISODateAR();
     const hsInicioISO = `${day}T08:30:00-03:00`;
 
     const tsEvent = isoNowSeconds();
@@ -582,11 +614,9 @@ document.addEventListener("DOMContentLoaded", () => {
       matriz: ""
     };
 
-    // marcamos para no duplicar (aunque quede en cola)
     s.lateArrivalSent = true;
     writeStateForLegajo(legajo, s);
 
-    // lo agregamos a cola + estado (sin tocar TM)
     updateStateAfterSend(legajo, latePayload);
     enqueue(latePayload);
 
@@ -599,7 +629,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const legajo = legajoKey();
     if (!legajo) { alert("Ingresá el número de legajo"); return; }
 
-    // ✅ si corresponde, encola "Llegada Tarde" ANTES del primer reporte
     maybeSendLateArrival(legajo);
 
     const texto = String(textInput.value || "").trim();
@@ -653,7 +682,6 @@ document.addEventListener("DOMContentLoaded", () => {
     updateStateAfterSend(legajo, payload);
     renderSummary();
 
-    // volver a pantalla inicial
     selected = null;
     selectedArea.classList.add("hidden");
     optionsScreen.classList.add("hidden");
@@ -662,7 +690,6 @@ document.addEventListener("DOMContentLoaded", () => {
     matrizInfo.innerHTML = "";
     error.innerText = "";
 
-    // ✅ limpiar highlight si vuelvo atrás
     document.querySelectorAll(".box.selected").forEach(x => x.classList.remove("selected"));
 
     enqueue(payload);
@@ -696,6 +723,6 @@ document.addEventListener("DOMContentLoaded", () => {
   renderOptions();
   renderSummary();
 
-  console.log("app.js OK ✅ (TM bloqueo+preselect + llegada tarde automática + seleccionado verde)");
+  console.log("app.js OK ✅ (Reset diario + keys _Cervantes_v1)");
 
 });
