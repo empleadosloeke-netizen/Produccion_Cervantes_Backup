@@ -1,7 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
 
   const GOOGLE_SHEET_WEBAPP_URL =
-    "https://script.google.com/macros/s/AKfycbw3uhNP6Mp9UGZTUsjs8KDhgQmSw6crBBBpq6wd79d_FTtIjSmbzE9XNJaIyUmr3lY/exec";
+    "https://script.google.com/macros/s/AKfycby6N0hlsNjh-Yn-4OMaKp7E-BOFaIgN8tyrvQo6jiVCaFp0xnAHUBYp3vDZmhOvn_pJ/exec";
 
   /* ================= TIEMPO ================= */
   function isoNowSeconds() {
